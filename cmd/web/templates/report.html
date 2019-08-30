@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Upload your dataset to datab.io</title>
+</head>
+
+<body>
+  <h4>Dataset parsed</h4>
+
+  {{range $colname,$coltype := .Types}}
+  <form action="/translate" method="get">
+    <fieldset title="{{$colname}} ({{$coltype}})">
+      <input type="hidden" name="field" value="{{b64 $colname}}" />
+      <label>Source Identifers From:
+        {{$s := index $.Sources $colname}}
+        <select name="from">
+          {{range $srcID, $score := $s}}
+          <option value="{{$srcID}}">{{$srcID}} ({{$score}}%)</option>
+          {{end}}
+        </select>
+      </label>
+
+      <label>Translate Into:
+        {{$s := index $.Sources $colname}}
+        <select name="to">
+          {{range $srcID, $score := $s}}
+          <optgroup label="from {{$srcID}}">
+            {{$m := index $.Maps $srcID}}
+            {{range $m}}
+              <option value="{{.}}">{{.}}</option>
+            {{end}}
+          </optgroup>
+          {{end}}
+        </select>
+      </label>
+    </fieldset>
+    <input type="submit" value="Translate {{$colname}}" />
+  </form>
+  {{end}}
+
+</body>
+
+</html>

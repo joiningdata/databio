@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Upload your dataset to datab.io</title>
+</head>
+
+<body>
+  <h4>Dataset translation ready</h4>
+
+  <pre>{{.Methods}}</pre>
+  <ol>
+    {{range .Citations}}
+    <li>{{.}}</li>
+    {{end}}
+  </ol>
+
+  <a href="/download">Download ZIP file here</a>
+
+  <pre>{{.Log}}</pre>
+</body>
+
+</html>
