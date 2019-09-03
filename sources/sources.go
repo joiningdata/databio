@@ -105,10 +105,17 @@ func Open(filename string) (*Database, error) {
 
 // SourceHit describes a search hit and some statistics.
 type SourceHit struct {
-	SourceName  string
-	Subset      string
-	Hits        uint64
+	// SourceName of the database hit.
+	SourceName string
+	// Subset of the database if defined.
+	Subset string
+	// Hits is the number of samples that hit the database.
+	Hits uint64
+	// SubsetRatio indicates the percentage of the subset covered by the sample.
+	// E.g. Hits / |Subset|
 	SubsetRatio float64 // 0.0 - 1.0
+	// SubsetRatio indicates the percentage of the sample covered by the subset.
+	// E.g. Hits / |Sample|
 	SampleRatio float64 // 0.0 - 1.0
 }
 

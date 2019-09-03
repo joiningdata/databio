@@ -6,6 +6,7 @@ import (
 	"archive/zip"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
@@ -208,6 +209,13 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Fprintln(zwf, info.Log)
+	zwf, err = zw.Create("stats.json")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jb, _ := json.MarshalIndent(info.Stats, "", "    ")
+	zwf.Write(jb)
 	zwf, err = zw.Create("methods.txt")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
