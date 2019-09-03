@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"log"
+	"strings"
 
 	"github.com/360EntSecGroup-Skylar/excelize"
 )
@@ -11,6 +12,8 @@ import (
 const (
 	// check at most 5000 rows for header content
 	xlsxHeaderCheckMaxRows = 5000
+
+	excelMultiSplit = "|"
 )
 
 var (
@@ -139,7 +142,7 @@ func (x *XLSX) skipHeaders() {
 
 // Next returns the next Record in the document.
 // (Implements the formats.Reader interface)
-func (x *XLSX) Next() (*Record, error) {
+func (x *XLSX) Next() (Record, error) {
 	if !x.rows.Next() {
 		x.stickyErr = x.rows.Error()
 		return nil, x.stickyErr
@@ -150,9 +153,15 @@ func (x *XLSX) Next() (*Record, error) {
 		x.stickyErr = err
 		return nil, x.stickyErr
 	}
-	return &Record{
-		Fields: x.head,
-		Values: cols,
+
+	vals := make([][]string, len(cols))
+	for i, c := range cols {
+		vals[i] = strings.Split(c, excelMultiSplit)
+	}
+
+	return &simpleRec{
+		fields: x.head,
+		values: vals,
 	}, nil
 }
 

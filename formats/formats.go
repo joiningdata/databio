@@ -40,7 +40,7 @@ func Open(in *os.File) (Reader, error) {
 // Reader returns Records from a supported Format.
 type Reader interface {
 	// Next returns the next Record in the document.
-	Next() (*Record, error)
+	Next() (Record, error)
 
 	// Err returns the last error that occured.
 	Err() error
@@ -49,40 +49,71 @@ type Reader interface {
 // Writer serializes records to a supported Format.
 type Writer interface {
 	// Write serializes the Record.
-	Write(*Record) error
+	Write(Record) error
 
 	// Err returns the last error that occured.
 	Err() error
 }
 
 // Record represents a single record sourced from the Format.
-type Record struct {
-	// Fields contains the field names for each value.  NB for Formats that
-	// can contain multiple values, Fields may contain duplicates.
-	Fields []string
+type Record interface {
+	// Each iterates over every field/value pair in the Record.
+	Each(func(field, value string) error) error
+
+	// Fields returns the a list of Fields present in this Record.
+	Fields() []string
+
+	// Values returns the values associated with a named Field.
+	Values(field string) []string
+
+	// Set the values for a named Field in the Record.
+	Set(field string, values []string)
+}
+
+type simpleRec struct {
+	// Fields contains the field names for each value.
+	fields []string
 
 	// Values contains the values of each corresponding Field.
-	Values []string
+	values [][]string
 }
 
-// Map returns a map of fields and values for the Record.
-func (r *Record) Map() map[string][]string {
-	res := make(map[string][]string, len(r.Values))
-	for i, val := range r.Values {
-		f := r.Fields[i]
-		res[f] = append(res[f], val)
+func (x *simpleRec) Each(cb func(field, value string) error) error {
+	var err error
+	for i, vals := range x.values {
+		f := x.fields[i]
+		for _, val := range vals {
+			cb(f, val)
+		}
 	}
-	return res
+	return err
 }
 
-// SingleMap returns a map of fields and singular values for the Record.
-// Note if any fields/values have multiple entries only one is returned.
-func (r *Record) SingleMap() map[string]string {
-	res := make(map[string]string, len(r.Values))
-	for i, f := range r.Fields {
-		res[f] = r.Values[i]
+func (x *simpleRec) Fields() []string {
+	return x.fields
+}
+
+func (x *simpleRec) Values(field string) []string {
+	for i, f := range x.fields {
+		if i >= len(x.values) {
+			return nil
+		}
+		if f == field {
+			return x.values[i]
+		}
 	}
-	return res
+	return nil
+}
+
+func (x *simpleRec) Set(field string, vals []string) {
+	for i, f := range x.fields {
+		if f == field {
+			x.values[i] = vals
+			return
+		}
+	}
+	x.fields = append(x.fields, field)
+	x.values = append(x.values, vals)
 }
 
 ///////////

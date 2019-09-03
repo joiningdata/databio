@@ -117,9 +117,10 @@ func (d *Detector) run() {
 			if n > maxSamples {
 				break
 			}
-			for i, colname := range rec.Fields {
-				samples[colname] = append(samples[colname], rec.Values[i])
-			}
+			rec.Each(func(colname, value string) error {
+				samples[colname] = append(samples[colname], value)
+				return nil
+			})
 
 			rec, err = r.Next()
 		}

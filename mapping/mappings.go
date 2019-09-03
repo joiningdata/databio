@@ -113,19 +113,12 @@ type Stats struct {
 }
 
 // Start a new identifier mapping task in the background and return a job token.
-func (m *Mapper) Start(fname, fromField, fromID, toID string) string {
+func (m *Mapper) Start(fname string, opts *Options) string {
 	token := fmt.Sprintf("%x", sha256.Sum256([]byte(fname)))
 	d := request{
 		inputFilename: fname,
 		resultToken:   token,
-		options: &Options{
-			FromField:    fromField,
-			FromSource:   fromID,
-			ToSource:     toID,
-			Replace:      true,
-			DropMissing:  true,
-			OutputFormat: "csv",
-		},
+		options:       opts,
 	}
 	m.pump <- d
 	return token
@@ -203,9 +196,10 @@ func (m *Mapper) run() {
 		rec, err := r.Next()
 		for err == nil {
 			missing := false
-			row := rec.Map()
-			vals, ok := row[opts.FromField]
-			if ok {
+			ok := false
+			//row := rec.Map()
+			vals := rec.Values(opts.FromField)
+			if len(vals) > 0 {
 				v2 := make([]string, len(vals))
 				for i, v := range vals {
 					v2[i], ok = translator[v]
@@ -214,7 +208,7 @@ func (m *Mapper) run() {
 						stats.SourceMissingValues++
 					}
 				}
-				row[newFieldName] = v2
+				rec.Set(newFieldName, v2)
 			}
 
 			if missing {
@@ -228,7 +222,7 @@ func (m *Mapper) run() {
 
 			if first {
 				first = false
-				err = csvwr.Write(rec.Fields)
+				err = csvwr.Write(rec.Fields())
 				if err != nil {
 					log.Println("stage4", req, err)
 					databio.PutResult(req.resultToken, "mapping",
@@ -237,9 +231,9 @@ func (m *Mapper) run() {
 				}
 			}
 
-			line := make([]string, len(rec.Fields))
-			for i, v := range rec.Fields {
-				line[i] = strings.Join(row[v], "|")
+			line := make([]string, len(rec.Fields()))
+			for i, v := range rec.Fields() {
+				line[i] = strings.Join(rec.Values(v), "|")
 			}
 			err = csvwr.Write(line)
 			if err != nil {

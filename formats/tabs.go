@@ -10,6 +10,8 @@ import (
 const (
 	// check at most 5000 rows for header content
 	tsvHeaderCheckMaxRows = 5000
+
+	tsvMultiSplit = "|"
 )
 
 var (
@@ -133,12 +135,16 @@ func (x *TSV) skipHeaders() {
 			return
 		}
 	}
+
+	// TODO: autodetect per-column multi-value split delimiters
+	// tsvMultiSplit
+
 	x.stickyErr = x.s.Err()
 }
 
 // Next returns the next Record in the document.
 // (Implements the formats.Reader interface)
-func (x *TSV) Next() (*Record, error) {
+func (x *TSV) Next() (Record, error) {
 	if !x.s.Scan() {
 		x.stickyErr = x.s.Err()
 		if x.stickyErr == nil {
@@ -147,10 +153,14 @@ func (x *TSV) Next() (*Record, error) {
 		return nil, x.stickyErr
 	}
 	cols := strings.Split(x.s.Text(), "\t")
+	vals := make([][]string, len(cols))
+	for i, c := range cols {
+		vals[i] = strings.Split(c, tsvMultiSplit)
+	}
 
-	return &Record{
-		Fields: x.head,
-		Values: cols,
+	return &simpleRec{
+		fields: x.head,
+		values: vals,
 	}, nil
 }
 

@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"encoding/csv"
 	"io"
+	"strings"
 )
 
 const (
 	// check at most 5000 rows for header content
 	csvHeaderCheckMaxRows = 5000
+
+	csvMultiSplit = ";"
 )
 
 var (
@@ -161,16 +164,20 @@ func (x *CSV) skipHeaders() {
 
 // Next returns the next Record in the document.
 // (Implements the formats.Reader interface)
-func (x *CSV) Next() (*Record, error) {
+func (x *CSV) Next() (Record, error) {
 	cols, err := x.r.Read()
 	if err != nil {
 		x.stickyErr = err
 		return nil, x.stickyErr
 	}
+	vals := make([][]string, len(cols))
+	for i, c := range cols {
+		vals[i] = strings.Split(c, csvMultiSplit)
+	}
 
-	return &Record{
-		Fields: x.head,
-		Values: cols,
+	return &simpleRec{
+		fields: x.head,
+		values: vals,
 	}, nil
 }
 

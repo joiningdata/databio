@@ -148,7 +148,15 @@ func translateHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("Document: ", fname)
 	log.Println("Translate from", fromField, "/", fromID, "to", toID)
 
-	token := mapper.Start(fname, fromField, fromID, toID)
+	token := mapper.Start(fname, &mapping.Options{
+		FromField:    fromField,
+		FromSource:   fromID,
+		ToSource:     toID,
+		Replace:      true,
+		DropMissing:  true,
+		OutputFormat: "csv",
+	})
+
 	http.Redirect(w, r, "/wait?k="+token, http.StatusSeeOther)
 }
 
