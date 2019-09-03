@@ -6,36 +6,41 @@
 </head>
 
 <body>
-  <h4>Dataset parsed</h4>
+  <h4>2/3 - Dataset parsed</h4>
 
   {{range $colname,$coltype := .Types}}
   <form action="/translate" method="get">
     <fieldset title="{{$colname}} ({{$coltype}})">
       <input type="hidden" name="field" value="{{b64 $colname}}" />
       <label>Source Identifers From:
-        {{$s := index $.Sources $colname}}
+        {{$ds := index $.DetectedSources $colname}}
         <select name="from">
-          {{range $srcID, $score := $s}}
-          <option value="{{$srcID}}">{{$srcID}} ({{$score}}%)</option>
+          {{range $srcID, $score := $ds}}
+          {{$src := index $.Sources $srcID}}
+          <option value="{{$srcID}}">{{$src.Description}} ({{$score}}%)</option>
           {{end}}
         </select>
       </label>
 
       <label>Translate Into:
-        {{$s := index $.Sources $colname}}
+        {{$ds := index $.DetectedSources $colname}}
         <select name="to">
-          {{range $srcID, $score := $s}}
-          <optgroup label="from {{$srcID}}">
+          {{range $srcID, $score := $ds}}
+          {{$src := index $.Sources $srcID}}
+          <optgroup label="from {{$src.Description}}">
             {{$m := index $.Maps $srcID}}
             {{range $m}}
-              <option value="{{.}}">{{.}}</option>
+              {{$src2 := index $.Sources .}}
+              <option value="{{.}}">{{$src2.Description}}</option>
             {{end}}
           </optgroup>
           {{end}}
         </select>
       </label>
+
+      <input type="hidden" name="doc" value="{{$.InputFilename}}" />
+      <input type="submit" value="Translate Field '{{$colname}}'" />
     </fieldset>
-    <input type="submit" value="Translate {{$colname}}" />
   </form>
   {{end}}
 

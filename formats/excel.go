@@ -1,9 +1,9 @@
 package formats
 
 import (
+	"bytes"
 	"io"
 	"log"
-	"os"
 
 	"github.com/360EntSecGroup-Skylar/excelize"
 )
@@ -12,6 +12,38 @@ const (
 	// check at most 5000 rows for header content
 	xlsxHeaderCheckMaxRows = 5000
 )
+
+var (
+	_ = Register(&Format{
+		Name:        "Excel XLSX",
+		Description: "Microsoft Excel 2007+ Spreadsheet",
+		Extensions:  []string{".xlsx"},
+		MediaTypes:  []string{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+		Detect:      detectXLSX,
+		NewReader: func(r io.Reader) (Reader, error) {
+			// TODO: this'll panic if necessary, but we could do it cleaner later
+			return OpenXLSX(r.(io.ReadSeeker))
+		},
+		NewWriter: writerNotSupported,
+	})
+)
+
+func detectXLSX(data []byte, incomplete bool) (supported, more bool) {
+	defer func() {
+		if e := recover(); e != nil {
+			supported = false
+			more = false
+		}
+	}()
+
+	if incomplete {
+		hasMagic := (data[0] == 0x50) && (data[1] == 0x4b) && (data[2] == 0x03) && (data[3] == 0x04)
+		return hasMagic, true
+	}
+
+	_, err := excelize.OpenReader(bytes.NewReader(data))
+	return err == nil, false
+}
 
 // XLSX supports reading tabular records from an excel file.
 type XLSX struct {
@@ -27,7 +59,9 @@ type XLSX struct {
 }
 
 // OpenXLSX opens an excel document and returns a formats.Reader.
-func OpenXLSX(in *os.File) (*XLSX, error) {
+func OpenXLSX(in io.Reader) (*XLSX, error) {
+	// excelize.OpenReader reads the entire file into memory,
+	// so we're done with 'in' when this finishes
 	f, err := excelize.OpenReader(in)
 	if err != nil {
 		return nil, ErrUnsupportedFormat

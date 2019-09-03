@@ -13,18 +13,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-/*
-	if nFloats > nIntegers && nFloats > nPrefixedIntegers {
-		coltypes[colname] = "floats"
-	} else if nIntegers > nPrefixedIntegers {
-		coltypes[colname] = "integers"
-	} else if nPrefixedIntegers >= len(sample)/2 {
-		coltypes[colname] = "prefixed integers"
-	} else {
-		coltypes[colname] = "text"
-	}
-*/
-
 func initDB(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE sources (
 				source_id integer primary key,

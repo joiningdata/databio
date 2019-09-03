@@ -3,10 +3,12 @@ package sources
 import (
 	"bufio"
 	"database/sql"
+	"errors"
 	"log"
-	"os"
 	"sort"
 	"strings"
+
+	"github.com/joiningdata/databio"
 
 	// only support sqlite3
 	_ "github.com/mattn/go-sqlite3"
@@ -16,7 +18,7 @@ import (
 type Database struct {
 	db *sql.DB
 
-	sources  map[string]*Source
+	Sources  map[string]*Source
 	mappings map[string]map[string]string
 }
 
@@ -95,19 +97,22 @@ func Open(filename string) (*Database, error) {
 
 	db := &Database{
 		db:       sdb,
-		sources:  srcs,
+		Sources:  srcs,
 		mappings: maps,
 	}
 	return db, err
 }
 
+// SourceHit describes a search hit and some statistics.
 type SourceHit struct {
-	SourceName string
-	Subset     string
-	Hits       uint64
-	Ratio      float64 // 0.0 - 1.0
+	SourceName  string
+	Subset      string
+	Hits        uint64
+	SubsetRatio float64 // 0.0 - 1.0
+	SampleRatio float64 // 0.0 - 1.0
 }
 
+// Mappings returns a list of sources that the named Source can be mapped to.
 func (x *Database) Mappings(sourceName string) []string {
 	var res []string
 	for left, m := range x.mappings {
@@ -123,7 +128,10 @@ func (x *Database) Mappings(sourceName string) []string {
 	return res
 }
 
-func (x *Database) GetTranslator(fromID, toID string) (map[string]string, error) {
+// GetMapping returns a map from the given source IDs to another source IDs.
+// It currently only supports 1-1 mappings.
+// TODO: implement 1-M mappings
+func (x *Database) GetMapping(fromID, toID string) (map[string]string, error) {
 	retCol := -1
 	fn := ""
 
@@ -145,8 +153,12 @@ func (x *Database) GetTranslator(fromID, toID string) (map[string]string, error)
 		}
 	}
 
+	if fn == "" {
+		return nil, errors.New("databio/sources: no supported mapping")
+	}
+
 	res := make(map[string]string, 75000)
-	f, err := os.Open(fn)
+	f, err := databio.OpenSourceMap(fn)
 	if err != nil {
 		return nil, err
 	}
@@ -160,9 +172,12 @@ func (x *Database) GetTranslator(fromID, toID string) (map[string]string, error)
 	return res, nil
 }
 
+// DetermineSource examines the sample data given and tries to guess which
+// source database it came from. It returns a sorted list of possible
+// Sources along with additional statistics.
 func (x *Database) DetermineSource(sample []string) []*SourceHit {
 	var res []*SourceHit
-	for srcName, src := range x.sources {
+	for srcName, src := range x.Sources {
 		for subsetName, bf := range src.Subsets {
 			var hits uint64
 			for _, s := range sample {
@@ -173,18 +188,18 @@ func (x *Database) DetermineSource(sample []string) []*SourceHit {
 			if hits == 0 {
 				continue
 			}
-			ratio := float64(hits) / float64(bf.Count())
 			res = append(res, &SourceHit{
-				SourceName: srcName,
-				Subset:     subsetName,
-				Hits:       hits,
-				Ratio:      ratio,
+				SourceName:  srcName,
+				Subset:      subsetName,
+				Hits:        hits,
+				SubsetRatio: float64(hits) / float64(bf.Count()),
+				SampleRatio: float64(hits) / float64(len(sample)),
 			})
 		}
 	}
 	sort.Slice(res, func(i, j int) bool {
 		if res[i].Hits == res[j].Hits {
-			return res[i].Ratio > res[j].Ratio
+			return res[i].SubsetRatio > res[j].SubsetRatio
 		}
 		return res[i].Hits > res[j].Hits
 	})

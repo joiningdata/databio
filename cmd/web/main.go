@@ -6,12 +6,10 @@ import (
 	"archive/zip"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -19,7 +17,11 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/joiningdata/databio"
+
 	"github.com/gorilla/sessions"
+	"github.com/joiningdata/databio/detection"
+	"github.com/joiningdata/databio/mapping"
 	"github.com/joiningdata/databio/sources"
 )
 
@@ -33,21 +35,11 @@ const (
 var (
 	store     = sessions.NewCookieStore([]byte(os.Getenv("SESSION_KEY")))
 	templates *template.Template
+
+	srcDB    *sources.Database
+	detector *detection.Detector
+	mapper   *mapping.Mapper
 )
-
-type DetectionInfo struct {
-	Sources map[string]map[string]float64 `json:"sources"`
-	Types   map[string]string             `json:"types"`
-	Maps    map[string][]string           `json:"maps"`
-}
-
-type MappingResult struct {
-	Log           string   `json:"log"`
-	Methods       string   `json:"methods"`
-	Citations     []string `json:"citations"`
-	NewFilename   string   `json:"newfilename"`
-	LocalFilename string   `json:"_localfilename"`
-}
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("index.html", templates.ExecuteTemplate(w, "index.html", nil))
@@ -86,7 +78,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	fout, err := os.Create(filepath.Join(uploadBase, fname))
+	fout, err := os.Create(databio.GetUploadPath(fname))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -102,13 +94,10 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	fin.Close()
 
 	session.Values["documentKey"] = fname
-
-	fp1 := filepath.Join(uploadBase, fname)
-	fp2 := filepath.Join(uploadBase, fname+".detection.json")
-	startDetection(fp1, fp2)
+	token := detector.Start(fname)
 
 	session.Save(r, w)
-	http.Redirect(w, r, "/report?k="+fname, http.StatusSeeOther)
+	http.Redirect(w, r, "/report?k="+token, http.StatusSeeOther)
 }
 
 func reportHandler(w http.ResponseWriter, r *http.Request) {
@@ -117,138 +106,95 @@ func reportHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	dockey := r.URL.Query().Get("k")
-	if dockey == "" {
-		dki, ok := session.Values["documentKey"]
-		if ok {
-			dockey = dki.(string)
-		}
-	}
-	if dockey == "" {
+	token := r.URL.Query().Get("k")
+	if token == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	log.Println("Document Key: ", dockey)
-	//session.Save(r, w)
+	session.Values["det_token"] = token
+	session.Save(r, w)
 
-	b, err := ioutil.ReadFile(filepath.Join(uploadBase, dockey+".detection.json"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			w.Header().Set("Refresh", "1;url=/report")
-			fmt.Fprint(w, "Please wait...")
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+	ctx, done := detector.Status(token)
+	if !done {
+		w.Header().Set("Refresh", "1;url=/report?k="+token)
+		fmt.Fprint(w, "Please wait...")
+		return
+	} else if ctx == nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	//w.Header().Set("Content-type", "application/json")
-	//w.Write(b)
-	ctx := DetectionInfo{}
-	json.Unmarshal(b, &ctx)
+
 	log.Println("report.html", templates.ExecuteTemplate(w, "report.html", ctx))
 }
 
 func translateHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := store.Get(r, databioSessionName)
+	_, err := store.Get(r, databioSessionName)
 	if err != nil {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
 	q := r.URL.Query()
-	fb, _ := base64.URLEncoding.DecodeString(q.Get("field"))
+	fname := q.Get("doc")
+	fb, err := base64.URLEncoding.DecodeString(q.Get("field"))
+	if err != nil {
+		http.Error(w, "invalid field", http.StatusBadRequest)
+		return
+	}
 	fromField := string(fb)
 	fromID := q.Get("from")
 	toID := q.Get("to")
 
-	dockey, ok := session.Values["documentKey"]
-	if !ok {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	fname, ok := dockey.(string)
-	log.Println("Document Key: ", fname)
-	log.Println("translate from", fromField, "/", fromID, "to", toID)
-	//session.Save(r, w)
+	log.Println("Document: ", fname)
+	log.Println("Translate from", fromField, "/", fromID, "to", toID)
 
-	fp1 := filepath.Join(uploadBase, fname)
-	fp2 := filepath.Join(uploadBase, fname+".translation.json")
-	startTranslation(fp1, fp2, fromField, fromID, toID)
-
-	session.Save(r, w)
-	http.Redirect(w, r, "/wait?k="+fname, http.StatusSeeOther)
+	token := mapper.Start(fname, fromField, fromID, toID)
+	http.Redirect(w, r, "/wait?k="+token, http.StatusSeeOther)
 }
 
 func waitHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := store.Get(r, databioSessionName)
+	_, err := store.Get(r, databioSessionName)
 	if err != nil {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	dockey := r.URL.Query().Get("k")
-	if dockey == "" {
-		dki, ok := session.Values["documentKey"]
-		if ok {
-			dockey = dki.(string)
-		}
-	}
-	if dockey == "" {
+	token := r.URL.Query().Get("k")
+	if token == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	log.Println("Document Key: ", dockey)
 	//session.Save(r, w)
 
-	b, err := ioutil.ReadFile(filepath.Join(uploadBase, dockey+".translation.json"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			w.Header().Set("Refresh", "1;url=/wait")
-			fmt.Fprint(w, "Please wait...")
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+	ctx, done := mapper.Status(token)
+	if !done {
+		w.Header().Set("Refresh", "1;url=/wait?k="+token)
+		fmt.Fprint(w, "Please wait...")
+		return
+	} else if ctx == nil {
+		http.Error(w, "no context", http.StatusInternalServerError)
 		return
 	}
-	//w.Header().Set("Content-type", "application/json")
-	//w.Write(b)
 
-	ctx := MappingResult{}
-	json.Unmarshal(b, &ctx)
 	log.Println("ready.html", templates.ExecuteTemplate(w, "ready.html", ctx))
 }
 
 func downloadHandler(w http.ResponseWriter, r *http.Request) {
-	session, err := store.Get(r, databioSessionName)
+	_, err := store.Get(r, databioSessionName)
 	if err != nil {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	dockey := r.URL.Query().Get("k")
-	if dockey == "" {
-		dki, ok := session.Values["documentKey"]
-		if ok {
-			dockey = dki.(string)
-		}
-	}
-	if dockey == "" {
+	token := r.URL.Query().Get("k")
+	if token == "" {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	log.Println("Document Key: ", dockey)
 
 	/////////////////////////
-	// new translated filename, stamped log, methods text, citations
-	b, err := ioutil.ReadFile(filepath.Join(uploadBase, dockey+".translation.json"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			http.Redirect(w, r, "/wait", http.StatusSeeOther)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+	info, done := mapper.Status(token)
+	if !done {
+		http.Redirect(w, r, "/wait", http.StatusSeeOther)
 		return
-	}
-	var info MappingResult
-	err = json.Unmarshal(b, &info)
-	if err != nil {
+	} else if info == nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -280,7 +226,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	f, err := os.Open(info.LocalFilename)
+	f, err := os.Open(databio.GetDownloadPath(info.NewFilename))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -301,11 +247,17 @@ func main() {
 	addr := flag.String("i", ":8080", "`address:port` to listen for web requests")
 	flag.Parse()
 
-	var err error
+	err := databio.CheckDirectories()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	srcDB, err = sources.Open(*dbname)
 	if err != nil {
 		log.Fatal(err)
 	}
+	detector = detection.NewDetector(srcDB)
+	mapper = mapping.NewMapper(srcDB)
 
 	templates = template.New("databio")
 	templates.Funcs(template.FuncMap{

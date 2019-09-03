@@ -1,9 +1,9 @@
 package formats
 
 import (
+	"bytes"
 	"encoding/csv"
 	"io"
-	"os"
 )
 
 const (
@@ -11,9 +11,78 @@ const (
 	csvHeaderCheckMaxRows = 5000
 )
 
+var (
+	_ = Register(&Format{
+		Name:        "CSV",
+		Description: "Comma-separated Values",
+		Extensions:  []string{".csv"},
+		MediaTypes:  []string{"text/csv"},
+		Detect:      detectCSV,
+		NewReader: func(r io.Reader) (Reader, error) {
+			// TODO: this'll panic if necessary, but we could do it cleaner later
+			return OpenCSV(r.(io.ReadSeeker))
+		},
+		NewWriter: writerNotSupported,
+	})
+)
+
+func detectCSV(data []byte, incomplete bool) (supported, more bool) {
+	defer func() {
+		if e := recover(); e != nil {
+			supported = false
+			more = false
+		}
+	}()
+
+	if incomplete {
+		// since we only get a chunk, make sure the last line is a full record
+		idx := bytes.LastIndexByte(data, '\n')
+		if idx == -1 {
+			// we don't even have a full line if it is CSV...
+			return false, true
+		}
+		data = data[:idx]
+	}
+
+	b := bytes.NewReader(data)
+	r := csv.NewReader(b)
+	// don't validate number of columns in case there's a weird header
+	r.FieldsPerRecord = -1
+	r.ReuseRecord = true
+	colcounts := make(map[int]int)
+	ncols := 0
+	nlines := 0
+	rec, err := r.Read()
+	for ; err == nil; rec, err = r.Read() {
+		ncols = len(rec)
+		colcounts[ncols]++
+		nlines++
+	}
+	if err == io.EOF {
+		if ncols > 1 && colcounts[ncols] >= 2 {
+			// we got 2 or more lines of the same number of columns as the last line
+			// so it's probably CSV, more data likely won't help
+			return true, false
+		}
+
+		// if ncols==1, we can just use the (faster) tab-delimited parser
+		if nlines > 10 {
+			// more than 10 lines read and the last 2 didn't match?
+			// probably not CSV
+			return false, false
+		}
+
+		// not enough lines to know yet, more data might help
+		return false, true
+	}
+
+	// probably not in CSV
+	return false, false
+}
+
 // CSV supports reading tabular records from an csv file.
 type CSV struct {
-	f *os.File
+	f io.ReadSeeker
 	r *csv.Reader
 
 	head []string
@@ -22,7 +91,8 @@ type CSV struct {
 }
 
 // OpenCSV opens a csv document and returns a formats.Reader.
-func OpenCSV(in *os.File) (*CSV, error) {
+// An io.ReadSeeker is required due to header detection readahead.
+func OpenCSV(in io.ReadSeeker) (*CSV, error) {
 	r := csv.NewReader(in)
 
 	x := &CSV{
