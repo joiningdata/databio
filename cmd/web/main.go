@@ -128,6 +128,38 @@ func reportHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("report.html", templates.ExecuteTemplate(w, "report.html", ctx))
 }
 
+func quickmapHandler(w http.ResponseWriter, r *http.Request) {
+	_, err := store.Get(r, databioSessionName)
+	if err != nil {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	r.ParseForm()
+	fromID := r.Form.Get("from")
+	toID := r.Form.Get("to")
+	idlist := strings.Split(r.Form.Get("ids"), "\n")
+
+	translator, err := srcDB.GetMapping(fromID, toID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for _, id := range idlist {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			//fmt.Fprintln(w)
+			continue
+		}
+		id2, ok := translator[id]
+		if !ok {
+			fmt.Fprintln(w, "(missing)")
+		} else {
+			fmt.Fprintln(w, id2)
+		}
+	}
+}
+
 func translateHandler(w http.ResponseWriter, r *http.Request) {
 	_, err := store.Get(r, databioSessionName)
 	if err != nil {
@@ -137,10 +169,7 @@ func translateHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	fname := q.Get("doc")
 	b64field := q.Get("field")
-	if len(b64field)%3 != 0 {
-		b64field += strings.Repeat("=", 3-(len(b64field)%3))
-	}
-	fb, err := base64.URLEncoding.DecodeString(b64field)
+	fb, err := base64.RawURLEncoding.DecodeString(b64field)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "invalid field", http.StatusBadRequest)
@@ -283,7 +312,7 @@ func main() {
 	templates = template.New("databio")
 	templates.Funcs(template.FuncMap{
 		"b64": func(src string) string {
-			return strings.Trim(base64.URLEncoding.EncodeToString([]byte(src)), "=")
+			return base64.RawURLEncoding.EncodeToString([]byte(src))
 		},
 		"join": func(src []string) string {
 			return strings.Join(src, "\n")
@@ -302,6 +331,7 @@ func main() {
 	http.HandleFunc("/", indexHandler)              // index.html => POST to /upload
 	http.HandleFunc("/upload", uploadHandler)       // file upload => redirect to /report
 	http.HandleFunc("/report", reportHandler)       // report.html => POST to /translate
+	http.HandleFunc("/quickmap", quickmapHandler)   // in-page quick translation call for mapping preview
 	http.HandleFunc("/translate", translateHandler) // begin translation => redirect to /wait
 	http.HandleFunc("/wait", waitHandler)           // translate.html => GET to /download
 	http.HandleFunc("/download", downloadHandler)   // package ZIP file

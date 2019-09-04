@@ -9,7 +9,7 @@
 
   <style>
   form {display:none;}
-  .src-stats, .src-examples {display:none;font-size:12px;}
+  .src-stats, .src-examples, .dest-examples {display:none;font-size:12px;}
   #pick-fields .btn {margin:4px;}
   h3 {margin-top:64px;}
   </style>
@@ -101,7 +101,7 @@
             {{end}}
           </select>
         </label><br/>
-         ... example identifiers ... </td></tr>
+         <pre class="dest-examples" id="example-{{b64 $colname}}-dest">... </pre></td></tr>
          <tr><td valign="bottom">
             <input class="btn btn-primary btn-block" type="submit" value="Translate Field Now" />
          </td></tr>
@@ -121,9 +121,11 @@
         t.selectedIndex=0;
         var srcID = $(t).val();
         if( srcID == undefined) srcID="";
-        console.log(i,srcID, t.options)
         srcID = srcID.replace(/\./g, "\\.");
-        console.log(srcID, b64colname);
+
+        $(".src-stats").hide();
+        $(".src-examples").hide();
+
         var e1=$("#stats-"+b64colname+"-"+srcID).show();
         var e2=$("#example-"+b64colname+"-"+srcID).show();
       });
@@ -137,13 +139,25 @@
       var e2=$("#example-"+b64colname+"-"+cssrcID).show();
 
       //// refresh the "to" selections
-      var $el = $("#to-"+b64colname);
-      $el.empty(); // remove old options
+      var el = $("#to-"+b64colname);
+      el.empty(); // remove old options
       $.each(detResults["maps"][srcID], function(key,value) {
-        $el.append($("<option></option>")
+        el.append($("<option></option>")
           .attr("value", value)
           .text(detResults["sources"][value]["Description"]));
       });
+      el.change(function (e) {
+        $("#example-" + b64colname + "-dest").show().empty().addClass("loading");
+        $.post("/quickmap", {"from": srcID, "to": $(e.currentTarget).val(), "ids": e2.text()}, function(data){
+          $("#example-"+b64colname+"-dest").html(data).removeClass("loading");
+        })
+      });
+
+      // fire off a quick translation for the default
+      $("#example-" + b64colname + "-dest").show().empty().addClass("loading");
+      $.post("/quickmap", { "from": srcID, "to": el.val(), "ids": e2.text() }, function (data) {
+        $("#example-" + b64colname + "-dest").html(data).removeClass("loading");
+      })
     };
 
     $(document).ready(function(){
@@ -155,7 +169,7 @@
         var b64colname = t.id.substr(5);
         var srcID = $(t).val();
         if( srcID == undefined) srcID="";
-        
+
         updateSelects(b64colname, srcID);
 
       }).change(function(e){
