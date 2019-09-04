@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/joiningdata/databio"
 
@@ -39,8 +40,8 @@ type Result struct {
 	InputFilename string `json:"input_file"`
 
 	// DetectedSources reports, for each field of the input, the detected
-	// data Sources and a percentage hit ratio.
-	DetectedSources map[string]map[string]float64 `json:"detected"`
+	// data Sources, percentage hit ratio, and other stats.
+	DetectedSources map[string]map[string]*sources.SourceHit `json:"detected"`
 
 	// Types reports the detected data types of each field.
 	Types map[string]string `json:"types"`
@@ -118,7 +119,10 @@ func (d *Detector) run() {
 				break
 			}
 			rec.Each(func(colname, value string) error {
-				samples[colname] = append(samples[colname], value)
+				value = strings.TrimSpace(value)
+				if value != "" {
+					samples[colname] = append(samples[colname], value)
+				}
 				return nil
 			})
 
@@ -165,14 +169,14 @@ func (d *Detector) run() {
 
 		////////////
 		// try to classify each column's source
-		colsrcs := make(map[string]map[string]float64)
+		colsrcs := make(map[string]map[string]*sources.SourceHit)
 		sourcemaps := make(map[string][]string)
 		for colname, ctype := range coltypes {
 			sample := samples[colname]
-			sources := d.identify(ctype, sample)
-			colsrcs[colname] = sources
+			sourceHits := d.identify(ctype, sample)
+			colsrcs[colname] = sourceHits
 
-			for s := range sources {
+			for s := range sourceHits {
 				if _, ok := sourcemaps[s]; ok {
 					continue
 				}

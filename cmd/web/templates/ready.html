@@ -1,23 +1,107 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-  <title>Upload your dataset to datab.io</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/spectre.css/0.5.8/spectre.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/spectre.css/0.5.8/spectre-exp.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/spectre.css/0.5.8/spectre-icons.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <title>Translated Dataset ready at datab.io</title>
+
+  <style>
+  h3 {margin-top:64px;}
+  </style>
 </head>
 
-<body>
-  <h4>3/3 - Mapped Dataset ready</h4>
+<body class="container grid-sm">
+  <div class="columns p-centered">
+    <ul class="step">
+      <li class="step-item">
+        <a href="/" class="tooltip tooltip-bottom" data-tooltip="Step 1">Upload Dataset</a>
+      </li>
+      <li class="step-item">
+        <a href="/report" class="tooltip tooltip-bottom" data-tooltip="Step 2">Select Mappings</a>
+      </li>
+      <li class="step-item active">
+        <a href="/ready" class="tooltip tooltip-bottom" data-tooltip="Step 3">Download</a>
+      </li>
+    </ul>
+  </div>
 
-  <pre>{{.Methods}}</pre>
-  <ol>
-    {{range .Citations}}
-    <li>{{.}}</li>
-    {{end}}
-  </ol>
+  <h3>Remapped Dataset ready to download</h3>
 
-  <a href="/download?k={{.Token}}">Download ZIP file here</a>
+  <div class="accordion">
+    <input type="checkbox" id="accordion-1" name="accordion-checkbox" checked hidden>
+    <label class="accordion-header" for="accordion-1">
+      <i class="icon icon-arrow-right mr-1"></i>
+      Methods and Citations
+    </label>
+    <div class="accordion-body">
+      <pre>{{.Methods}}</pre>
+      <ol>
+        {{range .Citations}}
+        <li>{{.}}</li>
+        {{end}}
+      </ol>
 
-  <pre>{{.Log}}</pre>
+      <a class="p-centered btn btn-lg btn-primary" href="/download?k={{.Token}}">Download Results (.zip)</a>
+    </div>
+  </div>
+
+
+  <div class="accordion">
+    <input type="checkbox" id="accordion-2" name="accordion-checkbox" hidden>
+    <label class="accordion-header" for="accordion-2">
+      <i class="icon icon-arrow-right mr-1"></i>
+      Data Mapping Statistics
+    </label>
+    <div class="accordion-body">
+        <table class="table">
+          <tr>
+            <th>Processing Time</th>
+            <td>{{.Stats.EndTime.Sub .Stats.StartTime}}</td>
+          </tr>
+          <tr>
+            <th>Missing Sources</th>
+            <td>
+              {{.Stats.SourceMissingRecords}} Records<br />
+              {{.Stats.SourceMissingValues}} Values<br />
+            </td>
+          </tr>
+          <tr>
+            <td colspan="2" style="font-size: 10px;font: arial;">Missing sources count the input identifiers that
+              were not able to be mapped to the destination. If a Record contains
+              multiple input identifiers are, it is possible to have more than
+              one missing value.</td>
+          </tr>
+          <tr>
+            <th>Multiple Destinations</th>
+            <td>
+              {{.Stats.DestinationMultipleRecords}}(+{{.Stats.DestinationMultipleNewCount}}) Records<br />
+              {{.Stats.DestinationMultipleValues}} Values<br />
+            </td>
+          </tr>
+          <tr>
+            <td colspan="2" style="font-size: 10px;font: arial;">Multiple Destinations count the input identifiers that
+              were not able to be unambiguously mapped to the destination. Total Records
+              and Additional Record counts indicate how many record had multi-valued
+              destinations, and how many new records resulted from the expanded data.
+              Total Values indicates the number of values that were expanded.</td>
+          </tr>
+        </table>
+    </div>
+  </div>
+
+  <div class="accordion">
+    <input type="checkbox" id="accordion-3" name="accordion-checkbox" hidden>
+    <label class="accordion-header" for="accordion-3">
+      <i class="icon icon-arrow-right mr-1"></i>
+      Processing Logs
+    </label>
+    <div class="accordion-body">
+      <pre>{{.Log}}</pre>
+    </div>
+  </div>
+
 </body>
 
 </html>

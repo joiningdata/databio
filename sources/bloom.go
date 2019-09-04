@@ -98,7 +98,7 @@ func (b *BloomFilter) Detect(value string) (bool, float64) {
 		}
 		hx = (hx + h1) % b.size
 	}
-	return true, 1.0 - b.estimateError()
+	return true, 1.0 - b.EstimatedErrorRate()
 }
 
 // Name of the detector instance type.
@@ -109,6 +109,11 @@ func (b *BloomFilter) Name() string {
 // Count returns the number of items added to the set (if known)
 func (b *BloomFilter) Count() uint64 {
 	return b.nadded
+}
+
+// ExpectedError returns the expected error rate of the set.
+func (b *BloomFilter) ExpectedError() float64 {
+	return b.estError
 }
 
 // Pack the detector into a serializable string.
@@ -158,7 +163,7 @@ func (b *BloomFilter) Unpack(rawbytes []byte) error {
 
 func (b *BloomFilter) String() string {
 	res := fmt.Sprintf("bloom(m=%d, k=%d, n=%d)\n", b.size, b.keys, b.nadded)
-	res += fmt.Sprintf("estimated error rate  : %3.3f%%\n", b.estimateError()*100.0)
+	res += fmt.Sprintf("estimated error rate  : %3.3f%%\n", b.EstimatedErrorRate()*100.0)
 	res += fmt.Sprintf("optimal keys          : %d\n", b.optimalKeys())
 
 	res += fmt.Sprintf("optimal size (err=1%%) : %d\n", b.optimalSize(0.01))
@@ -190,9 +195,10 @@ func (b *BloomFilter) optimalKeys() int {
 	return int(math.Ln2 * float64(b.size) / float64(b.nadded))
 }
 
+// EstimatedErrorRate returns the estimated error rate of the set.
 // b=bits per element
 // (1.0 - e^(-k/b))^k
-func (b *BloomFilter) estimateError() float64 {
+func (b *BloomFilter) EstimatedErrorRate() float64 {
 	return math.Pow(1.0-math.Exp(-float64(b.keys*b.nadded)/float64(b.size)), float64(b.keys))
 }
 

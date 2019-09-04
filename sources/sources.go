@@ -14,6 +14,10 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+const (
+	exampleHitSize = 10
+)
+
 // A Database of source identifiers and references to mapping resources between them.
 type Database struct {
 	db *sql.DB
@@ -111,12 +115,18 @@ type SourceHit struct {
 	Subset string
 	// Hits is the number of samples that hit the database.
 	Hits uint64
+	// Tested is the number of sample values tested.
+	Tested uint64
 	// SubsetRatio indicates the percentage of the subset covered by the sample.
 	// E.g. Hits / |Subset|
 	SubsetRatio float64 // 0.0 - 1.0
 	// SubsetRatio indicates the percentage of the sample covered by the subset.
 	// E.g. Hits / |Sample|
 	SampleRatio float64 // 0.0 - 1.0
+	// ExpectedError rate of hits for the source tested.
+	ExpectedError float64 // 0.0-1.0
+	// Examples lists some sample values that were in the hit set.
+	Examples []string
 }
 
 // Mappings returns a list of sources that the named Source can be mapped to.
@@ -187,20 +197,28 @@ func (x *Database) DetermineSource(sample []string) []*SourceHit {
 	for srcName, src := range x.Sources {
 		for subsetName, bf := range src.Subsets {
 			var hits uint64
+			var ex []string
 			for _, s := range sample {
 				if yes, _ := bf.Detect(s); yes {
+					if len(ex) < exampleHitSize {
+						ex = append(ex, s)
+					}
 					hits++
 				}
 			}
 			if hits == 0 {
 				continue
 			}
+
 			res = append(res, &SourceHit{
-				SourceName:  srcName,
-				Subset:      subsetName,
-				Hits:        hits,
-				SubsetRatio: float64(hits) / float64(bf.Count()),
-				SampleRatio: float64(hits) / float64(len(sample)),
+				SourceName:    srcName,
+				Subset:        subsetName,
+				Hits:          hits,
+				Tested:        uint64(len(sample)),
+				SubsetRatio:   float64(hits) / float64(bf.Count()),
+				SampleRatio:   float64(hits) / float64(len(sample)),
+				ExpectedError: bf.EstimatedErrorRate(),
+				Examples:      ex,
 			})
 		}
 	}

@@ -1,49 +1,173 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-  <title>Upload your dataset to datab.io</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/spectre.css/0.5.8/spectre.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/spectre.css/0.5.8/spectre-exp.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/spectre.css/0.5.8/spectre-icons.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <title>Dataset uploaded to datab.io</title>
+
+  <style>
+  form {display:none;}
+  .src-stats, .src-examples {display:none;font-size:12px;}
+  #pick-fields .btn {margin:4px;}
+  h3 {margin-top:64px;}
+  </style>
 </head>
 
-<body>
-  <h4>2/3 - Dataset parsed</h4>
+<body class="container grid-sm">
+    <div class="columns p-centered">
+      <ul class="step">
+        <li class="step-item">
+          <a href="/" class="tooltip tooltip-bottom" data-tooltip="Step 1">Upload Dataset</a>
+        </li>
+        <li class="step-item active">
+          <a href="/report" class="tooltip tooltip-bottom" data-tooltip="Step 2">Select Mappings</a>
+        </li>
+        <li class="step-item">
+          <a href="/ready" class="tooltip tooltip-bottom" data-tooltip="Step 3">Download</a>
+        </li>
+      </ul>
+    </div>
+
+    <h3>Select a Field to remap</h3>
+
+    <div id="pick-fields">
+      {{range $colname,$coltype := .Types}}
+      <button class="btn btn-secondary
+      {{$ds := index $.DetectedSources $colname}}
+      {{if eq (len $ds) 0}}disabled{{else}}
+      len{{len $ds}}
+      {{range $srcID, $stats := $ds}}
+      {{if gt $stats.SampleRatio 0.90}}badge{{end}}
+      {{end}}{{end}}
+      " id="toggle-{{b64 $colname}}"
+        onclick="toggleColumn('{{$colname}}', '{{b64 $colname}}');return false;">
+        {{$colname}}</button>
+      {{end}}
+    </div>
+
 
   {{range $colname,$coltype := .Types}}
-  <form action="/translate" method="get">
-    <fieldset title="{{$colname}} ({{$coltype}})">
-      <input type="hidden" name="field" value="{{b64 $colname}}" />
-      <label>Source Identifers From:
-        {{$ds := index $.DetectedSources $colname}}
-        <select name="from">
-          {{range $srcID, $score := $ds}}
-          {{$src := index $.Sources $srcID}}
-          <option value="{{$srcID}}">{{$src.Description}} ({{$score}}%)</option>
-          {{end}}
-        </select>
-      </label>
-
-      <label>Translate Into:
-        {{$ds := index $.DetectedSources $colname}}
-        <select name="to">
-          {{range $srcID, $score := $ds}}
-          {{$src := index $.Sources $srcID}}
-          <optgroup label="from {{$src.Description}}">
-            {{$m := index $.Maps $srcID}}
-            {{range $m}}
-              {{$src2 := index $.Sources .}}
-              <option value="{{.}}">{{$src2.Description}}</option>
-            {{end}}
-          </optgroup>
-          {{end}}
-        </select>
-      </label>
+  <form id="form-{{b64 $colname}}" class="form" action="/translate" method="get">
 
       <input type="hidden" name="doc" value="{{$.InputFilename}}" />
-      <input type="submit" value="Translate Field '{{$colname}}'" />
-    </fieldset>
+      <input type="hidden" name="field" value="{{b64 $colname}}" />
+
+      <table class="table table-border"><tr><td valign="top">
+        <label for="from-{{b64 $colname}}">Source Identifers</label>
+          {{$ds := index $.DetectedSources $colname}}
+
+          {{range $srcID, $stats := $ds}}
+          <div class="src-stats" id="stats-{{b64 $colname}}-{{$srcID}}">
+            <b>{{$stats.Hits}}/{{$stats.Tested}} ({{pct $stats.SampleRatio}})</b>
+                of sample data matched.<br/>
+
+            {{if ne $stats.Subset ""}}
+              <b>{{pct $stats.SubsetRatio}}</b>
+                of the '{{$stats.Subset}}' subset.
+            {{else}}
+              <b>{{pct $stats.SubsetRatio}}</b>
+                of the entire source dataset.
+            {{end}}<br/>
+          </div>
+          {{end}}
+        </td>
+        <td valign="top" rowspan="2">From:
+          <select id="from-{{b64 $colname}}" name="from">
+            {{range $srcID, $stats := $ds}}
+            {{$src := index $.Sources $srcID}}
+            <option value="{{$srcID}}">{{$src.Description}}</option>
+            {{end}}
+          </select>
+          {{range $srcID, $stats := $ds}}
+            <span class="src-examples" id="example-{{b64 $colname}}-{{$srcID}}">
+            <pre>{{join $stats.Examples}}</pre>
+            </span>
+          {{end}}
+        </td><td valign="top" rowspan="2">
+        <label>To:
+          {{$ds := index $.DetectedSources $colname}}
+          <select id="to-{{b64 $colname}}" name="to">
+            {{range $srcID, $stats := $ds}}
+            {{$src := index $.Sources $srcID}}
+            <optgroup label="from {{$src.Description}}">
+              {{$m := index $.Maps $srcID}}
+              {{range $m}}
+              {{$src2 := index $.Sources .}}
+              <option value="{{.}}">{{$src2.Description}}</option>
+              {{end}}
+            </optgroup>
+            {{end}}
+          </select>
+        </label><br/>
+         ... example identifiers ... </td></tr>
+         <tr><td valign="bottom">
+            <input class="btn btn-primary btn-block" type="submit" value="Translate Field Now" />
+         </td></tr>
+      </table>
   </form>
   {{end}}
 
+  <script>
+    var detResults = {{.}};
+    var currentColumn="";
+    function toggleColumn(col, b64colname) {
+      console.log(col);
+      $("#toggle-"+currentColumn).toggleClass("btn-primary btn-secondary")
+      $("#toggle-"+b64colname).toggleClass("btn-primary btn-secondary")
+      $("form").hide();
+      $("#form-"+b64colname).show().find("select[name=from]").each(function(i,t){
+        t.selectedIndex=0;
+        var srcID = $(t).val();
+        if( srcID == undefined) srcID="";
+        console.log(i,srcID, t.options)
+        srcID = srcID.replace(/\./g, "\\.");
+        console.log(srcID, b64colname);
+        var e1=$("#stats-"+b64colname+"-"+srcID).show();
+        var e2=$("#example-"+b64colname+"-"+srcID).show();
+      });
+      currentColumn = b64colname;
+    };
+
+    function updateSelects(b64colname, srcID) {
+      var cssrcID = srcID.replace(/\./g, "\\.");
+
+      var e1=$("#stats-"+b64colname+"-"+cssrcID).show();
+      var e2=$("#example-"+b64colname+"-"+cssrcID).show();
+
+      //// refresh the "to" selections
+      var $el = $("#to-"+b64colname);
+      $el.empty(); // remove old options
+      $.each(detResults["maps"][srcID], function(key,value) {
+        $el.append($("<option></option>")
+          .attr("value", value)
+          .text(detResults["sources"][value]["Description"]));
+      });
+    };
+
+    $(document).ready(function(){
+      $(".src-stats").hide();
+      $(".src-examples").hide();
+
+      $("select[name=from]").each(function(i,t){
+        t.selectedIndex=0;
+        var b64colname = t.id.substr(5);
+        var srcID = $(t).val();
+        if( srcID == undefined) srcID="";
+        
+        updateSelects(b64colname, srcID);
+
+      }).change(function(e){
+        var b64colname = e.currentTarget.id.substr(5);
+        var srcID = $(e.currentTarget).val();
+
+        $(".src-stats").hide();
+        $(".src-examples").hide();
+        updateSelects(b64colname, srcID);
+      });
+    });
+  </script>
 </body>
 
 </html>

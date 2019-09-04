@@ -136,8 +136,13 @@ func translateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	fname := q.Get("doc")
-	fb, err := base64.URLEncoding.DecodeString(q.Get("field"))
+	b64field := q.Get("field")
+	if len(b64field)%3 != 0 {
+		b64field += strings.Repeat("=", 3-(len(b64field)%3))
+	}
+	fb, err := base64.URLEncoding.DecodeString(b64field)
 	if err != nil {
+		log.Println(err)
 		http.Error(w, "invalid field", http.StatusBadRequest)
 		return
 	}
@@ -277,7 +282,15 @@ func main() {
 
 	templates = template.New("databio")
 	templates.Funcs(template.FuncMap{
-		"b64": func(src string) string { return base64.URLEncoding.EncodeToString([]byte(src)) },
+		"b64": func(src string) string {
+			return strings.Trim(base64.URLEncoding.EncodeToString([]byte(src)), "=")
+		},
+		"join": func(src []string) string {
+			return strings.Join(src, "\n")
+		},
+		"pct": func(v float64) string {
+			return fmt.Sprintf("%0.2f%%", v*100.0)
+		},
 	})
 	templates, err = templates.ParseGlob("templates/*.html")
 	if err != nil {

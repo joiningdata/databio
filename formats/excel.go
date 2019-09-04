@@ -2,6 +2,7 @@ package formats
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"strings"
@@ -111,6 +112,18 @@ func (x *XLSX) skipHeaders() {
 			x.stickyErr = err
 			return
 		}
+		truecols := make([]string, 0, len(cols))
+		for i, c := range cols {
+			if strings.TrimSpace(c) == "" {
+				continue
+			}
+			for i > len(truecols) {
+				truecols = append(truecols, fmt.Sprintf("Column %c", 'A'+len(truecols)))
+			}
+			truecols = append(truecols, strings.TrimSpace(c))
+		}
+		cols = truecols
+
 		nr++
 		colcounts[len(cols)]++
 		if colcounts[len(cols)] > colcounts[bestcols] {
@@ -120,6 +133,7 @@ func (x *XLSX) skipHeaders() {
 			break
 		}
 	}
+	log.Println("BEST COLS ", colcounts)
 
 	// reset the row iterator and move until we hit first row with that number of columns
 	// assume that that row is the header (TODO: be smarter about this)
@@ -133,6 +147,18 @@ func (x *XLSX) skipHeaders() {
 			x.stickyErr = err
 			return
 		}
+		truecols := make([]string, 0, len(cols))
+		for i, c := range cols {
+			if strings.TrimSpace(c) == "" {
+				continue
+			}
+			for i > len(truecols) {
+				truecols = append(truecols, fmt.Sprintf("Column %c", 'A'+len(truecols)))
+			}
+			truecols = append(truecols, strings.TrimSpace(c))
+		}
+		cols = truecols
+
 		if len(cols) == bestcols {
 			x.head = cols
 			return
@@ -145,6 +171,9 @@ func (x *XLSX) skipHeaders() {
 func (x *XLSX) Next() (Record, error) {
 	if !x.rows.Next() {
 		x.stickyErr = x.rows.Error()
+		if x.stickyErr == nil {
+			x.stickyErr = io.EOF
+		}
 		return nil, x.stickyErr
 	}
 
@@ -152,6 +181,9 @@ func (x *XLSX) Next() (Record, error) {
 	if err != nil {
 		x.stickyErr = err
 		return nil, x.stickyErr
+	}
+	if len(cols) > len(x.head) {
+		cols = cols[:len(x.head)]
 	}
 
 	vals := make([][]string, len(cols))
