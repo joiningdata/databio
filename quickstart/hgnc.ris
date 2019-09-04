@@ -1,0 +1,36 @@
+TY  - JOUR
+TI  - Genenames.org: the HGNC and VGNC resources in 2017
+AU  - Yates, Bethan
+AU  - Braschi, Bryony
+AU  - Gray, Kristian A.
+AU  - Seal, Ruth L.
+AU  - Tweedie, Susan
+AU  - Bruford, Elspeth A.
+T2  - Nucleic Acids Research
+AB  - The HUGO Gene Nomenclature Committee (HGNC) based at the European Bioinformatics Institute (EMBL-EBI) assigns unique symbols and names to human genes. Currently the HGNC database contains almost 40 000 approved gene symbols, over 19 000 of which represent protein-coding genes. In addition to naming genomic loci we manually curate genes into family sets based on shared characteristics such as homology, function or phenotype. We have recently updated our gene family resources and introduced new improved visualizations which can be seen alongside our gene symbol reports on our primary website http://www.genenames.org In 2016 we expanded our remit and formed the Vertebrate Gene Nomenclature Committee (VGNC) which is responsible for assigning names to vertebrate species lacking a dedicated nomenclature group. Using the chimpanzee genome as a pilot project we have approved symbols and names for over 14 500 protein-coding genes in chimpanzee, and have developed a new website http://vertebrate.genenames.org to distribute these data. Here, we review our online data and resources, focusing particularly on the improvements and new developments made during the last two years.
+DA  - 2017//01/04
+PY  - 2017
+DO  - 10.1093/nar/gkw1033
+DP  - PubMed
+VL  - 45
+IS  - D1
+SP  - D619
+EP  - D625
+J2  - Nucleic Acids Res.
+LA  - eng
+SN  - 1362-4962
+ST  - Genenames.org
+L2  - http://www.ncbi.nlm.nih.gov/pubmed/27799471
+KW  - Animals
+KW  - Databases, Genetic
+KW  - Genes
+KW  - Genome
+KW  - Genomics
+KW  - Humans
+KW  - Multigene Family
+KW  - Search Engine
+KW  - Terminology as Topic
+KW  - Vertebrates
+KW  - Web Browser
+ER  - 
+

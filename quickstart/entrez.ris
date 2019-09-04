@@ -1,0 +1,25 @@
+TY  - JOUR
+TI  - Entrez Gene: gene-centered information at NCBI
+AU  - Maglott, Donna
+AU  - Ostell, Jim
+AU  - Pruitt, Kim D.
+AU  - Tatusova, Tatiana
+T2  - Nucleic Acids Research
+AB  - Entrez Gene (www.ncbi.nlm.nih.gov/entrez/query.fcgi?db=gene) is NCBI's database for gene-specific information. It does not include all known or predicted genes; instead Entrez Gene focuses on the genomes that have been completely sequenced, that have an active research community to contribute gene-specific information, or that are scheduled for intense sequence analysis. The content of Entrez Gene represents the result of curation and automated integration of data from NCBI's Reference Sequence project (RefSeq), from collaborating model organism databases, and from many other databases available from NCBI. Records are assigned unique, stable and tracked integers as identifiers. The content (nomenclature, map location, gene products and their attributes, markers, phenotypes, and links to citations, sequences, variation details, maps, expression, homologs, protein domains and external databases) is updated as new information becomes available. Entrez Gene is a step forward from NCBI's LocusLink, with both a major increase in taxonomic scope and improved access through the many tools associated with NCBI Entrez.
+DA  - 2005/01/01/
+PY  - 2005
+DO  - 10.1093/nar/gki031
+DP  - PubMed Central
+VL  - 33
+IS  - Database Issue
+SP  - D54
+EP  - D58
+J2  - Nucleic Acids Res
+SN  - 0305-1048
+ST  - Entrez Gene
+UR  - https://www.ncbi.nlm.nih.gov/pmc/articles/PMC539985/
+Y2  - 2019/09/04/20:04:19
+L1  - https://www.ncbi.nlm.nih.gov/pmc/articles/PMC539985/pdf/gki031.pdf
+L2  - https://www.ncbi.nlm.nih.gov/pmc/articles/PMC539985/
+ER  - 
+

@@ -2,15 +2,39 @@ IMP=../cmd/import/import
 
 $IMP init
 
-$IMP new org.ensembl.gene "Ensembl Gene ID" "https://ensembl.org"
-$IMP new org.ensembl.transcript "Ensembl Transcript ID" "https://ensembl.org"
-$IMP new org.ensembl.protein "Ensembl Protein ID" "https://ensembl.org"
+$IMP new org.ensembl.gene "Ensembl Gene ID"
+$IMP new org.ensembl.transcript "Ensembl Transcript ID"
+$IMP new org.ensembl.protein "Ensembl Protein ID"
 
-$IMP -t integer new gov.nih.nlm.ncbi.gene "NCBI Entrez Gene ID" "https://www.ncbi.nlm.nih.gov/gene"
+$IMP -t integer new gov.nih.nlm.ncbi.gene "NCBI Entrez Gene ID"
 
-$IMP new org.genenames.gene "HGNC Gene ID" "http://www.genenames.org/"
-$IMP new org.genenames.symbol "HGNC Gene Symbol" "http://www.genenames.org/"
-$IMP new org.genenames.name "HGNC Gene Name" "http://www.genenames.org/"
+$IMP new org.genenames.gene "HGNC Gene ID"
+$IMP new org.genenames.symbol "HGNC Gene Symbol"
+$IMP new org.genenames.name "HGNC Gene Name"
+
+# add in main site, and id-linkout URLs
+
+$IMP urls org.ensembl.gene "https://ensembl.org" "http://www.ensembl.org/id/%s"
+$IMP urls org.ensembl.transcript "https://ensembl.org" "http://www.ensembl.org/id/%s"
+$IMP urls org.ensembl.protein "https://ensembl.org" "http://www.ensembl.org/id/%s"
+
+$IMP urls gov.nih.nlm.ncbi.gene "https://www.ncbi.nlm.nih.gov/gene" "https://www.ncbi.nlm.nih.gov/gene/%s"
+
+$IMP urls org.genenames.gene "http://www.genenames.org/" "http://www.genenames.org/cgi-bin/gene_symbol_report?hgnc_id=%s"
+$IMP urls org.genenames.symbol "http://www.genenames.org/" "https://www.genenames.org/tools/search/#!/all?query=%s"
+$IMP urls org.genenames.name "http://www.genenames.org/" "https://www.genenames.org/tools/search/#!/all?query=%s"
+
+# add in citations for the resources
+
+$IMP ref org.ensembl.gene ensembl.ris
+$IMP ref org.ensembl.transcript ensembl.ris
+$IMP ref org.ensembl.protein ensembl.ris
+
+$IMP ref gov.nih.nlm.ncbi.gene entrez.ris
+
+$IMP ref org.genenames.gene hgnc.ris
+$IMP ref org.genenames.symbol hgnc.ris
+$IMP ref org.genenames.name hgnc.ris
 
 ## full collection indexes
 
