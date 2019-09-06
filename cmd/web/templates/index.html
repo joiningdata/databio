@@ -18,6 +18,20 @@
 
 <body class="container grid-sm">
   <div class="columns p-centered">
+      <div class="hero hero-sm bg-gray">
+          <div class="hero-body">
+            <h1>Automated data integration tools</h1>
+            <p>A simple Gene ID mapping service for Bioinformatics.
+              Upload a gene-oriented data set, we'll automatically
+              detect the identifiers in use, and offer to convert
+              them to match other providers in just a few clicks.</p>
+          </div>
+        </div>
+
+        <br />
+        <br />
+        <br />
+
     <ul class="step">
         <li class="step-item active">
           <a href="/" class="tooltip tooltip-bottom" data-tooltip="Step 1">Upload Dataset</a>
@@ -30,22 +44,38 @@
         </li>
       </ul>
 
+      <br />
+      <br />
 
       <form class="form-horizontal" action="/upload" method="post" enctype="multipart/form-data">
         <div class="form-group">
-          <div class="col-3 col-sm-12">
-            <label class="form-label" for="data-file">Data File</label>
+          <div class="col-12">
+            <label id="select-file-button" class="form-label btn btn-primary btn-lg" for="data-file">Select a Data File to Upload</label>
           </div>
-          <div class="col-9 col-sm-12">
-            <input class="form-input" id="data-file" name="data" type="file">
+          <div style="display: none;">
+            <input id="data-file" name="data" type="file">
           </div>
         </div>
         <div class="form-group">
-          <div class="col-3 col-sm-12"></div>
-          <div class="col-9 col-sm-12">
-            <button type="submit" class="btn btn-primary">upload</button>
+          <div class="col-12">
+            <button type="submit" id="upload-file-button" class="btn disabled btn-secondary btn-block">Upload</button>
           </div>
         </div>
+        <script>
+        $(document).ready(function(){
+          $("#upload-file-button").click(function(e){
+            $("#upload-file-button").addClass("loading");
+          });
+
+          $("#data-file").change(function(e){
+            var fn = $("#data-file").val().split(/(\\|\/)/g).pop();
+
+            $("#select-file-button").removeClass("btn-primary").addClass("btn-secondary");
+            $("#upload-file-button").text("Upload "+fn).removeClass("disabled btn-secondary").addClass("btn-primary");
+            //$("form").submit();
+          });
+        });
+        </script>
       </form>
   </div>
 </body>

@@ -176,6 +176,8 @@ type SourceHit struct {
 	Subset string
 	// Hits is the number of samples that hit the database.
 	Hits uint64
+	// UniqueHits is the number of sample values that hit the database.
+	UniqueHits uint64
 	// Tested is the number of sample values tested.
 	Tested uint64
 	// SubsetRatio indicates the percentage of the subset covered by the sample.
@@ -235,6 +237,7 @@ func (x *Database) DetermineSource(sample []string) []*SourceHit {
 	var res []*SourceHit
 	for srcName, src := range x.Sources {
 		for subsetName, bf := range src.Subsets {
+			uhits := make(map[string]struct{})
 			var hits uint64
 			var ex []string
 			for _, s := range sample {
@@ -243,6 +246,7 @@ func (x *Database) DetermineSource(sample []string) []*SourceHit {
 						ex = append(ex, s)
 					}
 					hits++
+					uhits[s] = struct{}{}
 				}
 			}
 			if hits == 0 {
@@ -253,6 +257,7 @@ func (x *Database) DetermineSource(sample []string) []*SourceHit {
 				SourceName:    srcName,
 				Subset:        subsetName,
 				Hits:          hits,
+				UniqueHits:    uint64(len(uhits)),
 				Tested:        uint64(len(sample)),
 				SubsetRatio:   float64(hits) / float64(bf.Count()),
 				SampleRatio:   float64(hits) / float64(len(sample)),

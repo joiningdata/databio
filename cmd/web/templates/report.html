@@ -62,6 +62,12 @@
           <div class="src-stats" id="stats-{{b64 $colname}}-{{$srcID}}">
             <b>{{$stats.Hits}}/{{$stats.Tested}} ({{pct $stats.SampleRatio}})</b>
                 of sample data matched.<br/>
+            
+            {{if ne $stats.Hits $stats.UniqueHits}}
+              <br/>
+              <b>{{$stats.UniqueHits}}</b> unique values matched.<br/>
+            {{end}}
+            <br/>
 
             {{if ne $stats.Subset ""}}
               <b>{{pct $stats.SubsetRatio}}</b>

@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -143,181 +144,207 @@ func (m *Mapper) Status(token string) (res *Result, done bool) {
 
 func (m *Mapper) run() {
 	for req := range m.pump {
-		opts := req.options
-		res := &Result{Token: req.resultToken}
-		stats := &Stats{StartTime: time.Now()}
-		ext := filepath.Ext(req.inputFilename)
-		res.NewFilename = strings.Replace(req.inputFilename, ext, ".translated.csv", 1)
+		m.runOne(req)
+	}
+}
 
-		if opts.OutputFormat != "csv" {
-			log.Println("stage0", req, req.options.OutputFormat)
-			databio.PutResult(req.resultToken, "mapping",
-				"error", "only csv output is currently supported")
-			continue
-		}
+func (m *Mapper) runOne(req request) {
+	opts := req.options
+	res := &Result{Token: req.resultToken}
+	stats := &Stats{StartTime: time.Now()}
+	ext := filepath.Ext(req.inputFilename)
+	res.NewFilename = strings.Replace(req.inputFilename, ext, ".translated.csv", 1)
 
-		translator, err := m.src.GetMapper(opts.FromSource, opts.ToSource)
-		if err != nil {
-			log.Println("stage0", req, err)
-			databio.PutResult(req.resultToken, "mapping",
-				"error", "unable to get translator")
-			continue
-		}
+	if opts.OutputFormat != "csv" {
+		log.Println("stage0", req, req.options.OutputFormat)
+		databio.PutResult(req.resultToken, "mapping",
+			"error", "only csv output is currently supported")
+		return
+	}
 
-		f, err := os.Open(databio.GetUploadPath(req.inputFilename))
-		if err != nil {
-			log.Println("stage1", req, err)
-			databio.PutResult(req.resultToken, "mapping",
-				"error", "unable to read input")
-			continue
-		}
+	translator, err := m.src.GetMapper(opts.FromSource, opts.ToSource)
+	if err != nil {
+		log.Println("stage0", req, err)
+		databio.PutResult(req.resultToken, "mapping",
+			"error", "unable to get translator")
+		return
+	}
 
-		r, err := formats.Open(f)
-		if err != nil {
-			log.Println("stage2", req, err)
-			databio.PutResult(req.resultToken, "mapping",
-				"error", "unable to parse input")
-			continue
-		}
+	f, err := os.Open(databio.GetUploadPath(req.inputFilename))
+	if err != nil {
+		log.Println("stage1", req, err)
+		databio.PutResult(req.resultToken, "mapping",
+			"error", "unable to read input")
+		return
+	}
+	defer f.Close()
 
-		fout, err := os.Create(databio.GetDownloadPath(res.NewFilename))
-		if err != nil {
-			log.Println("stage3", req, err)
-			databio.PutResult(req.resultToken, "mapping",
-				"error", "unable to create output")
-			continue
-		}
-		defer fout.Close()
-		csvwr := csv.NewWriter(fout)
-		defer csvwr.Flush()
+	r, err := formats.Open(f)
+	if err != nil {
+		log.Println("stage2", req, err)
+		databio.PutResult(req.resultToken, "mapping",
+			"error", "unable to parse input")
+		return
+	}
 
-		newFieldName := opts.FromField
-		if !opts.Replace {
-			newFieldName = m.src.Sources[opts.ToSource].Name
-		}
-		first := true
-		rec, err := r.Next()
-		for err == nil {
-			missing := false
-			multiple := false
-			vals := rec.Values(opts.FromField)
-			stats.TotalRecords++
-			if len(vals) > 0 {
-				v2 := make([]string, 0, len(vals))
-				for _, v := range vals {
-					vx, ok := translator.Get(v)
-					if !ok || len(vx) == 0 {
-						missing = true
-						stats.SourceMissingValues++
-					}
-					if len(vx) > 1 {
-						multiple = true
-						stats.DestinationMultipleValues++
-						stats.DestinationMultipleNewCount += len(vx) - 1
-					}
-					v2 = append(v2, vx...)
+	fout, err := os.Create(databio.GetDownloadPath(res.NewFilename))
+	if err != nil {
+		log.Println("stage3", req, err)
+		databio.PutResult(req.resultToken, "mapping",
+			"error", "unable to create output")
+		return
+	}
+	csvwr := csv.NewWriter(fout)
+
+	newFieldName := opts.FromField
+	if !opts.Replace {
+		newFieldName = m.src.Sources[opts.ToSource].Name
+	}
+	first := true
+	rec, err := r.Next()
+	for err == nil {
+		missing := false
+		multiple := false
+		vals := rec.Values(opts.FromField)
+		stats.TotalRecords++
+		if len(vals) > 0 {
+			v2 := make([]string, 0, len(vals))
+			for _, v := range vals {
+				vx, ok := translator.Get(v)
+				if !ok || len(vx) == 0 {
+					missing = true
+					stats.SourceMissingValues++
 				}
-				rec.Set(newFieldName, v2)
-
-				if multiple {
-					stats.DestinationMultipleRecords++
+				if len(vx) > 1 {
+					multiple = true
+					stats.DestinationMultipleValues++
+					stats.DestinationMultipleNewCount += len(vx) - 1
 				}
+				v2 = append(v2, vx...)
 			}
+			rec.Set(newFieldName, v2)
 
-			if missing {
-				stats.SourceMissingRecords++
-				if opts.DropMissing {
-					rec, err = r.Next()
-					continue
-				}
+			if multiple {
+				stats.DestinationMultipleRecords++
 			}
+		}
 
-			if first {
-				first = false
-				err = csvwr.Write(rec.Fields())
-				if err != nil {
-					log.Println("stage4", req, err)
-					databio.PutResult(req.resultToken, "mapping",
-						"error", "unable to write header to output")
-					return
-				}
+		if missing {
+			stats.SourceMissingRecords++
+			if opts.DropMissing {
+				rec, err = r.Next()
+				continue
 			}
+		}
 
-			line := make([]string, len(rec.Fields()))
-			for i, v := range rec.Fields() {
-				line[i] = strings.Join(rec.Values(v), "|")
-			}
-			err = csvwr.Write(line)
+		if first {
+			first = false
+			err = csvwr.Write(rec.Fields())
 			if err != nil {
 				log.Println("stage4", req, err)
 				databio.PutResult(req.resultToken, "mapping",
-					"error", "unable to write to output")
+					"error", "unable to write header to output")
+				csvwr.Flush()
+				fout.Close()
 				return
 			}
-
-			rec, err = r.Next()
 		}
-		if err != io.EOF {
-			log.Println("stage99", req, err)
+
+		line := make([]string, len(rec.Fields()))
+		for i, v := range rec.Fields() {
+			line[i] = strings.Join(rec.Values(v), "|")
+		}
+		err = csvwr.Write(line)
+		if err != nil {
+			log.Println("stage4", req, err)
 			databio.PutResult(req.resultToken, "mapping",
-				"error", "unable to translate")
+				"error", "unable to write to output")
+			csvwr.Flush()
+			fout.Close()
 			return
 		}
 
-		///////////////
-		stats.EndTime = time.Now()
-		res.Stats = stats
-
-		fmtArgs := []interface{}{
-			m.src.Sources[opts.FromSource].Description, 1,
-			m.src.Sources[opts.ToSource].Description, 2,
-			3,
-		}
-		res.Methods = "Source identifiers were recognized as %ss [%d], and were " +
-			"converted to %ss [%d] using the Databio tools [%d]. "
-
-		t1 := m.src.Sources[opts.FromSource].LastUpdate
-		t2 := m.src.Sources[opts.ToSource].LastUpdate
-		if t2.Before(t1) {
-			t1 = t2
-		}
-
-		if stats.SourceMissingValues > 0 {
-			res.Methods += "This conversion resulted in the loss of %d/%d (%3.2f%%) source identifiers, " +
-				"likely due to database changes that occured between original distribution " +
-				"and the mapping data (sourced on %s). "
-			fmtArgs = append(fmtArgs, stats.SourceMissingValues, stats.TotalRecords,
-				float64(stats.SourceMissingValues)*100.0/float64(stats.TotalRecords),
-				t1.Format("2 January, 2006"))
-		} else {
-			res.Methods += "The mapping data used for identifier conversion was sourced on %s. "
-			fmtArgs = append(fmtArgs, t1.Format("2 January, 2006"))
-		}
-
-		if stats.DestinationMultipleRecords > 0 {
-			res.Methods += "Because of ambiguity between the identifier types, %d/%d (%3.2f%%) %ss were " +
-				"expanded to include multiple associated %ss each. "
-			fmtArgs = append(fmtArgs, stats.DestinationMultipleRecords, stats.TotalRecords,
-				float64(stats.DestinationMultipleRecords)*100.0/float64(stats.TotalRecords),
-				m.src.Sources[opts.FromSource].Description,
-				m.src.Sources[opts.ToSource].Description)
-		}
-
-		fmtArgs = append(fmtArgs,
-			m.src.Sources[opts.FromSource].Cite(),
-			m.src.Sources[opts.ToSource].Cite(),
-			databioCitations[0])
-		res.Methods += "\n\n  1. %s\n  2. %s\n  3. %s"
-		res.Methods = fmt.Sprintf(res.Methods, fmtArgs...)
-
-		res.Citations = []string{
-			m.src.Sources[opts.FromSource].Citation,
-			m.src.Sources[opts.ToSource].Citation,
-			databioCitations[1],
-		}
-		res.Log = "this is the timestamped and hashed logs for reproduction"
-		databio.PutResult(req.resultToken, "mapping", res)
+		rec, err = r.Next()
 	}
+	csvwr.Flush()
+	fout.Sync()
+	uploadInfo, _ := f.Stat()
+	convertedInfo, _ := fout.Stat()
+	fout.Close()
+
+	if err != io.EOF {
+		log.Println("stage99", req, err)
+		databio.PutResult(req.resultToken, "mapping",
+			"error", "unable to translate")
+		return
+	}
+
+	///////////////
+	stats.EndTime = time.Now()
+	res.Stats = stats
+
+	fmtArgs := []interface{}{
+		m.src.Sources[opts.FromSource].Description, 1,
+		m.src.Sources[opts.ToSource].Description, 2,
+		3,
+	}
+	res.Methods = "Source identifiers were recognized as %ss [%d], and were " +
+		"converted to %ss [%d] using the Databio tools [%d]. "
+
+	t1 := m.src.Sources[opts.FromSource].LastUpdate
+	t2 := m.src.Sources[opts.ToSource].LastUpdate
+
+	uploadSize := fmt.Sprintf("(%d byte %s)", uploadInfo.Size(), filepath.Ext(uploadInfo.Name()))
+	convertedSize := fmt.Sprintf("(%d byte %s)", convertedInfo.Size(), filepath.Ext(convertedInfo.Name()))
+
+	logs := []string{
+		"- date/times in UTC - Processed using data integration tools at https://datab.io",
+		t1.Format("2006-01-02 15:04:05") + " - Data fetched for " + m.src.Sources[opts.FromSource].Description,
+		t2.Format("2006-01-02 15:04:05") + " - Data fetched for " + m.src.Sources[opts.ToSource].Description,
+		uploadInfo.ModTime().UTC().Format("2006-01-02 15:04:05") + " - Source data uploaded to Databio " + uploadSize,
+		convertedInfo.ModTime().UTC().Format("2006-01-02 15:04:05") + " - Data mapping completed " + convertedSize,
+	}
+	sort.Strings(logs)
+
+	if t2.Before(t1) {
+		t1 = t2
+	}
+
+	if stats.SourceMissingValues > 0 {
+		res.Methods += "This conversion resulted in the loss of %d/%d (%3.2f%%) source identifiers, " +
+			"likely due to database changes that occured between original distribution " +
+			"and the mapping data (sourced on %s). "
+		fmtArgs = append(fmtArgs, stats.SourceMissingValues, stats.TotalRecords,
+			float64(stats.SourceMissingValues)*100.0/float64(stats.TotalRecords),
+			t1.Format("2 January, 2006"))
+	} else {
+		res.Methods += "The mapping data used for identifier conversion was sourced on %s. "
+		fmtArgs = append(fmtArgs, t1.Format("2 January, 2006"))
+	}
+
+	if stats.DestinationMultipleRecords > 0 {
+		res.Methods += "Because of ambiguity between the identifier types, %d/%d (%3.2f%%) %ss were " +
+			"expanded to include multiple associated %ss each. "
+		fmtArgs = append(fmtArgs, stats.DestinationMultipleRecords, stats.TotalRecords,
+			float64(stats.DestinationMultipleRecords)*100.0/float64(stats.TotalRecords),
+			m.src.Sources[opts.FromSource].Description,
+			m.src.Sources[opts.ToSource].Description)
+	}
+
+	fmtArgs = append(fmtArgs,
+		m.src.Sources[opts.FromSource].Cite(),
+		m.src.Sources[opts.ToSource].Cite(),
+		databioCitations[0])
+	res.Methods += "\n\n  1. %s\n  2. %s\n  3. %s"
+	res.Methods = fmt.Sprintf(res.Methods, fmtArgs...)
+
+	res.Citations = []string{
+		m.src.Sources[opts.FromSource].Citation,
+		m.src.Sources[opts.ToSource].Citation,
+		databioCitations[1],
+	}
+	res.Log = strings.Join(logs, "\n")
+	databio.PutResult(req.resultToken, "mapping", res)
 }
 
 // TODO: FIXME: actually publish something

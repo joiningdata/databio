@@ -3,6 +3,7 @@ package detection
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"regexp"
@@ -89,105 +90,117 @@ func (d *Detector) Status(token string) (res *Result, done bool) {
 
 func (d *Detector) run() {
 	for req := range d.pump {
-		res := &Result{
-			InputFilename: req.inputFilename,
-			Sources:       d.src.Sources,
-		}
-		f, err := os.Open(databio.GetUploadPath(req.inputFilename))
-		if err != nil {
-			log.Println("stage0", req, err)
-			databio.PutResult(req.resultToken, "detection",
-				"error", "unable to read input")
-			continue
-		}
-
-		r, err := formats.Open(f)
-		if err != nil {
-			log.Println("stage1", req, err)
-			databio.PutResult(req.resultToken, "detection",
-				"error", "unable to parse input")
-			continue
-		}
-
-		///// collect a sample of the input records
-		samples := make(map[string][]string)
-		n := 0
-		rec, err := r.Next()
-		for err == nil {
-			n++
-			if n > maxSamples {
-				break
-			}
-			rec.Each(func(colname, value string) error {
-				value = strings.TrimSpace(value)
-				if value != "" {
-					samples[colname] = append(samples[colname], value)
-				}
-				return nil
-			})
-
-			rec, err = r.Next()
-		}
-
-		///// determine if each column is numeric or text
-		coltypes := make(map[string]string)
-		pfxint := regexp.MustCompile("^[A-Za-z]*:[0-9]*$")
-		for colname, sample := range samples {
-			nIntegers := 0
-			nFloats := 0
-			nPrefixedIntegers := 0
-
-			for _, s := range sample {
-				_, err := strconv.ParseInt(s, 10, 64)
-				if err == nil {
-					nIntegers++
-					nFloats++
-					continue
-				}
-				_, err = strconv.ParseFloat(s, 64)
-				if err == nil {
-					nFloats++
-					continue
-				}
-
-				///////////
-				if pfxint.MatchString(s) {
-					nPrefixedIntegers++
-				}
-			}
-
-			if nFloats > nIntegers && nFloats > nPrefixedIntegers {
-				coltypes[colname] = "floats"
-			} else if nIntegers > nPrefixedIntegers {
-				coltypes[colname] = "integers"
-			} else if nPrefixedIntegers >= len(sample)/2 {
-				coltypes[colname] = "prefixed integers"
-			} else {
-				coltypes[colname] = "text"
-			}
-		}
-
-		////////////
-		// try to classify each column's source
-		colsrcs := make(map[string]map[string]*sources.SourceHit)
-		sourcemaps := make(map[string][]string)
-		for colname, ctype := range coltypes {
-			sample := samples[colname]
-			sourceHits := d.identify(ctype, sample)
-			colsrcs[colname] = sourceHits
-
-			for s := range sourceHits {
-				if _, ok := sourcemaps[s]; ok {
-					continue
-				}
-				sourcemaps[s] = d.src.Mappings(s)
-			}
-		}
-
-		res.DetectedSources = colsrcs
-		res.Maps = sourcemaps
-		res.Types = coltypes
-
-		databio.PutResult(req.resultToken, "detection", res)
+		d.runOne(req)
 	}
+}
+
+func (d *Detector) runOne(req request) {
+	res := &Result{
+		InputFilename: req.inputFilename,
+		Sources:       d.src.Sources,
+	}
+	f, err := os.Open(databio.GetUploadPath(req.inputFilename))
+	if err != nil {
+		log.Println("stage0", req, err)
+		databio.PutResult(req.resultToken, "detection",
+			"error", "unable to read input")
+		return
+	}
+
+	r, err := formats.Open(f)
+	if err != nil {
+		log.Println("stage1", req, err)
+		databio.PutResult(req.resultToken, "detection",
+			"error", "unable to parse input")
+		f.Close()
+		return
+	}
+
+	///// collect a sample of the input records
+	samples := make(map[string][]string)
+	n := 0
+	rec, err := r.Next()
+	for err == nil {
+		n++
+		if n > maxSamples {
+			break
+		}
+		rec.Each(func(colname, value string) error {
+			value = strings.TrimSpace(value)
+			if value != "" {
+				samples[colname] = append(samples[colname], value)
+			}
+			return nil
+		})
+
+		rec, err = r.Next()
+	}
+	f.Close()
+	if err != nil && err != io.EOF {
+		log.Println("stage2", req, err)
+		databio.PutResult(req.resultToken, "detection",
+			"error", "unable to parse input")
+		return
+	}
+
+	///// determine if each column is numeric or text
+	coltypes := make(map[string]string)
+	pfxint := regexp.MustCompile("^[A-Za-z]*:[0-9]*$")
+	for colname, sample := range samples {
+		nIntegers := 0
+		nFloats := 0
+		nPrefixedIntegers := 0
+
+		for _, s := range sample {
+			_, err := strconv.ParseInt(s, 10, 64)
+			if err == nil {
+				nIntegers++
+				nFloats++
+				continue
+			}
+			_, err = strconv.ParseFloat(s, 64)
+			if err == nil {
+				nFloats++
+				continue
+			}
+
+			///////////
+			if pfxint.MatchString(s) {
+				nPrefixedIntegers++
+			}
+		}
+
+		if nFloats > nIntegers && nFloats > nPrefixedIntegers {
+			coltypes[colname] = "floats"
+		} else if nIntegers > nPrefixedIntegers {
+			coltypes[colname] = "integers"
+		} else if nPrefixedIntegers >= len(sample)/2 {
+			coltypes[colname] = "prefixed integers"
+		} else {
+			coltypes[colname] = "text"
+		}
+	}
+
+	////////////
+	// try to classify each column's source
+	colsrcs := make(map[string]map[string]*sources.SourceHit)
+	sourcemaps := make(map[string][]string)
+	for colname, ctype := range coltypes {
+		sample := samples[colname]
+		sourceHits := d.identify(ctype, sample)
+		colsrcs[colname] = sourceHits
+
+		for s := range sourceHits {
+			if _, ok := sourcemaps[s]; ok {
+				continue
+			}
+			sourcemaps[s] = d.src.Mappings(s)
+		}
+	}
+
+	res.DetectedSources = colsrcs
+	res.Maps = sourcemaps
+	res.Types = coltypes
+
+	databio.PutResult(req.resultToken, "detection", res)
 }
