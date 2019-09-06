@@ -9,6 +9,7 @@
 
   <style>
   h3 {margin-top:64px;}
+  .accordion-header{background-color:#eee;}
   </style>
 </head>
 
@@ -36,13 +37,7 @@
       Methods and Citations
     </label>
     <div class="accordion-body">
-      <pre>{{.Methods}}</pre>
-      <ol>
-        {{range .Citations}}
-        <li>{{.}}</li>
-        {{end}}
-      </ol>
-
+      <p>{{safe .Methods}}</p>
       <a class="p-centered btn btn-lg btn-primary" href="/download?k={{.Token}}">Download Results (.zip)</a>
     </div>
   </div>
@@ -58,7 +53,10 @@
         <table class="table">
           <tr>
             <th>Processing Time</th>
-            <td>{{.Stats.EndTime.Sub .Stats.StartTime}}</td>
+            <td>
+              {{.Stats.TotalRecords}} Records<br/>
+              {{.Stats.EndTime.Sub .Stats.StartTime}}<br/>
+            </td>
           </tr>
           <tr>
             <th>Missing Sources</th>

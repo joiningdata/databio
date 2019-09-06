@@ -81,8 +81,9 @@
             {{end}}
           </select>
           {{range $srcID, $stats := $ds}}
+            {{$src := index $.Sources $srcID}}
             <span class="src-examples" id="example-{{b64 $colname}}-{{$srcID}}">
-            <pre>{{join $stats.Examples}}</pre>
+            <pre>{{joinLinkout $src $stats.Examples}}</pre>
             </span>
           {{end}}
         </td><td valign="top" rowspan="2">
@@ -117,17 +118,32 @@
       $("#toggle-"+currentColumn).toggleClass("btn-primary btn-secondary")
       $("#toggle-"+b64colname).toggleClass("btn-primary btn-secondary")
       $("form").hide();
-      $("#form-"+b64colname).show().find("select[name=from]").each(function(i,t){
-        t.selectedIndex=0;
+
+      var bestID="", bestScore=0.0;
+      for( v in detResults["detected"][col]) {
+        var x = detResults["detected"][col][v];
+        if ( bestID=="" || x.SampleRatio > bestScore ){
+          bestScore = x.SampleRatio;
+          bestID = v;
+        }
+      }
+
+      $(".src-stats").hide();
+      $(".src-examples").hide();
+
+      var sel = $("#form-"+b64colname).show().find("select[name=from]");
+      sel.each(function(i,t){
+        $(t).val(bestID);
+
         var srcID = $(t).val();
-        if( srcID == undefined) srcID="";
-        srcID = srcID.replace(/\./g, "\\.");
+        if( srcID == undefined) {
+          return;
+        }
+        var cssrcID = srcID.replace(/\./g, "\\.");
 
-        $(".src-stats").hide();
-        $(".src-examples").hide();
-
-        var e1=$("#stats-"+b64colname+"-"+srcID).show();
-        var e2=$("#example-"+b64colname+"-"+srcID).show();
+        var e1=$("#stats-"+b64colname+"-"+cssrcID).show();
+        var e2=$("#example-"+b64colname+"-"+cssrcID).show();
+        updateSelects(b64colname, srcID)
       });
       currentColumn = b64colname;
     };
@@ -148,6 +164,7 @@
       });
       el.change(function (e) {
         $("#example-" + b64colname + "-dest").show().empty().addClass("loading");
+        if( srcID=="" ) return;
         $.post("/quickmap", {"from": srcID, "to": $(e.currentTarget).val(), "ids": e2.text()}, function(data){
           $("#example-"+b64colname+"-dest").html(data).removeClass("loading");
         })
@@ -155,9 +172,10 @@
 
       // fire off a quick translation for the default
       $("#example-" + b64colname + "-dest").show().empty().addClass("loading");
+      if( srcID=="" ) return;
       $.post("/quickmap", { "from": srcID, "to": el.val(), "ids": e2.text() }, function (data) {
         $("#example-" + b64colname + "-dest").html(data).removeClass("loading");
-      })
+      });
     };
 
     $(document).ready(function(){

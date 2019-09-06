@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/joiningdata/databio/sources"
 	_ "github.com/mattn/go-sqlite3"
@@ -28,27 +29,50 @@ func initDB(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
+	_, err = db.Exec(`CREATE UNIQUE INDEX source_names_uqx ON sources (name);`)
+	if err != nil {
+		return err
+	}
 	_, err = db.Exec(`CREATE TABLE source_indexes (
 				source_id integer,
 				subset varchar,
 				bloom blob,
+				last_update datetime,
 				primary key (source_id, subset)
 			);`)
 	if err != nil {
 		return err
 	}
 	_, err = db.Exec(`CREATE TABLE source_mappings (
-				left_id integer, -- NB left_id < right_id
-				right_id integer,
+				left_source_id integer, -- NB left_source_id < right_source_id
+				right_source_id integer,
 				mapfilename varchar,
-				primary key (left_id, right_id)
+				map_query_lr varchar,
+				map_query_rl varchar,
+				last_update datetime,
+				primary key (left_source_id, right_source_id)
 			);`)
 	return err
 }
 
+func getOrCreateSource(db *sql.DB, sourceName string) (int64, error) {
+	var sid int64
+	err := db.QueryRow("SELECT source_id FROM sources WHERE name=?;", sourceName).Scan(&sid)
+	if err == sql.ErrNoRows {
+		res, err2 := db.Exec(`INSERT INTO sources (name) VALUES (?);`, sourceName)
+		if err2 == nil {
+			return res.LastInsertId()
+		}
+		err = err2
+	}
+	return sid, err
+}
+
 func createSource(db *sql.DB, sourceName, description, coltype string) error {
 	_, err := db.Exec(`INSERT INTO sources (name,description,ident_type)
-			VALUES (?,?,?);`, sourceName, description, coltype)
+			VALUES (?,?,?) ON CONFLICT(name) DO UPDATE
+			SET description=excluded.description, ident_type=excluded.ident_type;`,
+		sourceName, description, coltype)
 	return err
 }
 
@@ -70,9 +94,8 @@ func createReference(db *sql.DB, sourceName, risFilename string) error {
 	return err
 }
 
-func loadIndex(db *sql.DB, sourceName, subsetName, filename string) error {
-	srcid := 0
-	err := db.QueryRow("SELECT source_id FROM sources WHERE name=?;", sourceName).Scan(&srcid)
+func loadIndex(db *sql.DB, sourceName, subsetName, filename, updated string) error {
+	srcid, err := getOrCreateSource(db, sourceName)
 	if err != nil {
 		return err
 	}
@@ -110,38 +133,109 @@ func loadIndex(db *sql.DB, sourceName, subsetName, filename string) error {
 
 	data := bf.Pack()
 	log.Printf("%d items indexed (%dkb => %dkb [%d%%])", len(items), originalSize/1024, len(data)/1024, len(data)/int(originalSize/100))
-	_, err = db.Exec("INSERT INTO source_indexes (source_id,subset,bloom) VALUES (?,?,?);", srcid, subsetName, data)
+	_, err = db.Exec(`INSERT INTO source_indexes (source_id,subset,last_update,bloom)
+		VALUES (?,?,?,?);`, srcid, subsetName, updated, data)
 	return err
 }
 
-func createMapping(db *sql.DB, leftSourceName, rightSourceName, filename string) error {
-	leftID, rightID := 0, 0
-	err := db.QueryRow("SELECT source_id FROM sources WHERE name=?;", leftSourceName).Scan(&leftID)
+func createMapping(db *sql.DB, leftSourceName, rightSourceName, filename, updated string) error {
+	leftID, err := getOrCreateSource(db, leftSourceName)
 	if err != nil {
 		return err
 	}
-	err = db.QueryRow("SELECT source_id FROM sources WHERE name=?;", rightSourceName).Scan(&rightID)
+	rightID, err := getOrCreateSource(db, rightSourceName)
 	if err != nil {
 		return err
 	}
-	fullpath, err := filepath.Abs(filename)
+	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec("INSERT INTO source_mappings (left_id,right_id,mapfilename) VALUES (?,?,?);", leftID, rightID, fullpath)
-	return err
+	fullpath := filepath.Base(filename)
+
+	swapped := 0
+	if rightID < leftID {
+		swapped = 1
+		leftID, rightID = rightID, leftID
+	}
+	q1 := fmt.Sprintf("SELECT right_id FROM mapping_%d_to_%d WHERE left_id=?;", leftID, rightID)
+	q2 := fmt.Sprintf("SELECT left_id FROM mapping_%d_to_%d WHERE right_id=?;", leftID, rightID)
+	_, err = tx.Exec(`INSERT INTO source_mappings (left_source_id,right_source_id,mapfilename,last_update,
+		map_query_lr,map_query_rl) VALUES (?,?,?,?,?,?);`, leftID, rightID, fullpath, updated, q1, q2)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	_, err = tx.Exec(fmt.Sprintf(`CREATE TABLE mapping_%d_to_%d (
+			left_id varchar,
+			right_id varchar,
+			primary key(left_id,right_id)
+		);`, leftID, rightID))
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	stmt, err := tx.Prepare(fmt.Sprintf(`INSERT INTO mapping_%d_to_%d (left_id,right_id)
+		VALUES (?,?) ON CONFLICT DO NOTHING;`, leftID, rightID))
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	/// read in the entire mapping file
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	n := 0
+	s := bufio.NewScanner(f)
+	s.Scan() // skip header
+	for s.Scan() {
+		row := strings.Split(s.Text(), "\t")
+		left := strings.TrimSpace(row[swapped])
+		right := strings.TrimSpace(row[1-swapped])
+		if left == "" || right == "" {
+			// skip any pairs with a blank
+			continue
+		}
+		_, err = stmt.Exec(left, right)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		n++
+	}
+	f.Close()
+	log.Printf("Added %d mapping pairs to the database", n)
+
+	_, err = tx.Exec(fmt.Sprintf(`CREATE INDEX mapping_%d_to_%d_idx ON mapping_%d_to_%d (right_id,left_id);`,
+		rightID, leftID, leftID, rightID))
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	dbfile := flag.String("db", "sources.sqlite", "sqlite database `filename` for source identifers")
 	coltype := flag.String("t", "text", "`type` of the identifers (integers, floats, prefixed integers, text)")
+	upDate := flag.String("d", "", "`datetime` for the fetch of the updated data")
 	subsetname := flag.String("s", "", "`name` of the subset when indexing")
 	flag.Parse()
 
 	db, err := sql.Open("sqlite3", *dbfile)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	if *upDate == "" {
+		// NB the automatic timestamp truncates seconds intentionally,
+		// whereas the timestamp in the update scripts includes them.
+		*upDate = time.Now().Format("2006-01-02T15:04")
 	}
 
 	switch flag.Arg(0) {
@@ -158,11 +252,10 @@ func main() {
 		err = createReference(db, flag.Arg(1), flag.Arg(2))
 
 	case "index": // [-s subset] reverse.dotted.source.identifier identifier_filename.txt
-		log.Println(flag.Arg(1), *subsetname, flag.Arg(2))
-		err = loadIndex(db, flag.Arg(1), *subsetname, flag.Arg(2))
+		err = loadIndex(db, flag.Arg(1), *subsetname, flag.Arg(2), *upDate)
 
 	case "map": // reverse.dotted.left.source.identifier reverse.dotted.right.source.identifier mapping_filename.tsv
-		err = createMapping(db, flag.Arg(1), flag.Arg(2), flag.Arg(3))
+		err = createMapping(db, flag.Arg(1), flag.Arg(2), flag.Arg(3), *upDate)
 
 	default:
 		log.Fatal("supported commands: init, new, index, map")

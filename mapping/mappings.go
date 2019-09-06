@@ -91,6 +91,9 @@ type Stats struct {
 	// EndTime of the mapping process.
 	EndTime time.Time `json:"end_time"`
 
+	// TotalRecords counts the total number of records processed.
+	TotalRecords int `json:"total_records"`
+
 	// SourceMissingRecords counts the number of records that contained a
 	// Source ID that was not in the mapping dataset.
 	SourceMissingRecords int `json:"source_missing_records"`
@@ -153,7 +156,7 @@ func (m *Mapper) run() {
 			continue
 		}
 
-		translator, err := m.src.GetMapping(opts.FromSource, opts.ToSource)
+		translator, err := m.src.GetMapper(opts.FromSource, opts.ToSource)
 		if err != nil {
 			log.Println("stage0", req, err)
 			databio.PutResult(req.resultToken, "mapping",
@@ -196,23 +199,32 @@ func (m *Mapper) run() {
 		rec, err := r.Next()
 		for err == nil {
 			missing := false
-			ok := false
-			//row := rec.Map()
+			multiple := false
 			vals := rec.Values(opts.FromField)
+			stats.TotalRecords++
 			if len(vals) > 0 {
-				v2 := make([]string, len(vals))
-				for i, v := range vals {
-					v2[i], ok = translator[v]
-					if !ok {
+				v2 := make([]string, 0, len(vals))
+				for _, v := range vals {
+					vx, ok := translator.Get(v)
+					if !ok || len(vx) == 0 {
 						missing = true
 						stats.SourceMissingValues++
 					}
+					if len(vx) > 1 {
+						multiple = true
+						stats.DestinationMultipleValues++
+						stats.DestinationMultipleNewCount += len(vx) - 1
+					}
+					v2 = append(v2, vx...)
 				}
 				rec.Set(newFieldName, v2)
+
+				if multiple {
+					stats.DestinationMultipleRecords++
+				}
 			}
 
 			if missing {
-				log.Println("missing data", rec)
 				stats.SourceMissingRecords++
 				if opts.DropMissing {
 					rec, err = r.Next()
@@ -255,12 +267,69 @@ func (m *Mapper) run() {
 		///////////////
 		stats.EndTime = time.Now()
 		res.Stats = stats
-		res.Log = "this is the timestamped and hashed logs for reproduction"
-		res.Methods = "this is the methods text"
-		res.Citations = []string{
-			"this is a citation ready for import to endnote/zotero",
-			"this is citation #2",
+
+		fmtArgs := []interface{}{
+			m.src.Sources[opts.FromSource].Description, 1,
+			m.src.Sources[opts.ToSource].Description, 2,
+			3,
 		}
+		res.Methods = "Source identifiers were recognized as %ss [%d], and were " +
+			"converted to %ss [%d] using the Databio tools [%d]. "
+
+		t1 := m.src.Sources[opts.FromSource].LastUpdate
+		t2 := m.src.Sources[opts.ToSource].LastUpdate
+		if t2.Before(t1) {
+			t1 = t2
+		}
+
+		if stats.SourceMissingValues > 0 {
+			res.Methods += "This conversion resulted in the loss of %d/%d (%3.2f%%) source identifiers, " +
+				"likely due to database changes that occured between original distribution " +
+				"and the mapping data (sourced on %s). "
+			fmtArgs = append(fmtArgs, stats.SourceMissingValues, stats.TotalRecords,
+				float64(stats.SourceMissingValues)*100.0/float64(stats.TotalRecords),
+				t1.Format("2 January, 2006"))
+		} else {
+			res.Methods += "The mapping data used for identifier conversion was sourced on %s. "
+			fmtArgs = append(fmtArgs, t1.Format("2 January, 2006"))
+		}
+
+		if stats.DestinationMultipleRecords > 0 {
+			res.Methods += "Because of ambiguity between the identifier types, %d/%d (%3.2f%%) %ss were " +
+				"expanded to include multiple associated %ss each. "
+			fmtArgs = append(fmtArgs, stats.DestinationMultipleRecords, stats.TotalRecords,
+				float64(stats.DestinationMultipleRecords)*100.0/float64(stats.TotalRecords),
+				m.src.Sources[opts.FromSource].Description,
+				m.src.Sources[opts.ToSource].Description)
+		}
+
+		fmtArgs = append(fmtArgs,
+			m.src.Sources[opts.FromSource].Cite(),
+			m.src.Sources[opts.ToSource].Cite(),
+			databioCitations[0])
+		res.Methods += "\n\n  1. %s\n  2. %s\n  3. %s"
+		res.Methods = fmt.Sprintf(res.Methods, fmtArgs...)
+
+		res.Citations = []string{
+			m.src.Sources[opts.FromSource].Citation,
+			m.src.Sources[opts.ToSource].Citation,
+			databioCitations[1],
+		}
+		res.Log = "this is the timestamped and hashed logs for reproduction"
 		databio.PutResult(req.resultToken, "mapping", res)
 	}
+}
+
+// TODO: FIXME: actually publish something
+var databioCitations = []string{
+	`Jay et al. "Automated Data Integration tools for reproducible research" In prep. (2019).`,
+
+	strings.Replace(`TY  - JOUR
+		TI  - Automated Data Integration tools for reproducible research.
+		AU  - Jay, Jeremy J
+		T2  - In preparation
+		PY  - 2019
+		J2  - In prep
+		ER  - 
+		`, "\n\t\t", "\r\n", -1),
 }

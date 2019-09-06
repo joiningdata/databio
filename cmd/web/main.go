@@ -137,25 +137,32 @@ func quickmapHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	fromID := r.Form.Get("from")
 	toID := r.Form.Get("to")
-	idlist := strings.Split(r.Form.Get("ids"), "\n")
+	idlist := strings.Split(strings.TrimSpace(r.Form.Get("ids")), "\n")
 
-	translator, err := srcDB.GetMapping(fromID, toID)
+	translator, err := srcDB.GetMapper(fromID, toID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	dest := srcDB.Sources[toID]
 	for _, id := range idlist {
 		id = strings.TrimSpace(id)
 		if id == "" {
 			//fmt.Fprintln(w)
 			continue
 		}
-		id2, ok := translator[id]
-		if !ok {
-			fmt.Fprintln(w, "(missing)")
+		id2s, ok := translator.Get(id)
+		if !ok || len(id2s) == 0 {
+			fmt.Fprintf(w, "(missing %s='%s')\n", fromID, id)
 		} else {
-			fmt.Fprintln(w, id2)
+			for i, id2 := range id2s {
+				if i > 0 {
+					fmt.Fprintf(w, ", ")
+				}
+				fmt.Fprintf(w, `<a href="%s">%s</a>`, dest.Linkout(id2), id2)
+			}
+			fmt.Fprintf(w, "\n")
 		}
 	}
 }
@@ -217,6 +224,8 @@ func waitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx.Methods = strings.Replace(ctx.Methods, "\n", "<br/>\n", -1)
+
 	log.Println("ready.html", templates.ExecuteTemplate(w, "ready.html", ctx))
 }
 
@@ -264,12 +273,12 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Fprintln(zwf, info.Methods)
-	zwf, err = zw.Create("citations.txt")
+	zwf, err = zw.Create("citations.ris")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	fmt.Fprintln(zwf, strings.Join(info.Citations, "\n\n"))
+	fmt.Fprintln(zwf, strings.Join(info.Citations, "\r\n"))
 
 	zwf, err = zw.Create(info.NewFilename)
 	if err != nil {
@@ -319,6 +328,16 @@ func main() {
 		},
 		"pct": func(v float64) string {
 			return fmt.Sprintf("%0.2f%%", v*100.0)
+		},
+		"safe": func(h string) template.HTML {
+			return template.HTML(h)
+		},
+		"joinLinkout": func(src *sources.Source, data []string) template.HTML {
+			res := make([]string, len(data))
+			for i, x := range data {
+				res[i] = `<a href="` + src.Linkout(x) + `">` + x + "</a>"
+			}
+			return template.HTML(strings.Join(res, "\n"))
 		},
 	})
 	templates, err = templates.ParseGlob("templates/*.html")

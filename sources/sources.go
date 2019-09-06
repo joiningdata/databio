@@ -1,29 +1,85 @@
 package sources
 
 import (
-	"bufio"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"sort"
 	"strings"
-
-	"github.com/joiningdata/databio"
+	"sync"
+	"time"
 
 	// only support sqlite3
 	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
-	exampleHitSize = 10
+	exampleHitSize   = 10
+	defaultCacheSize = 16 * 1024
 )
 
 // A Database of source identifiers and references to mapping resources between them.
 type Database struct {
 	db *sql.DB
 
-	Sources  map[string]*Source
+	Sources map[string]*Source
+
 	mappings map[string]map[string]string
+	mappers  map[string]*dbMapper
+}
+
+// Mapper represents a one-way mapping between identifier sources.
+type Mapper interface {
+	// Get retrieves ids that map to the given id.
+	Get(leftID string) (rightIDs []string, found bool)
+}
+
+type dbMapper struct {
+	stmt  *sql.Stmt
+	mu    sync.RWMutex
+	cache *Cache
+}
+
+func (m *dbMapper) Close() {
+	m.cache.Clear()
+	m.stmt.Close()
+}
+
+func (m *dbMapper) Get(leftID string) (rightIDs []string, found bool) {
+	m.mu.RLock()
+	if r, ok := m.cache.Get(leftID); ok {
+		m.mu.RUnlock()
+		return r, ok
+	}
+	m.mu.RUnlock()
+	rows, err := m.stmt.Query(leftID)
+	if err == sql.ErrNoRows {
+		m.mu.Lock()
+		m.cache.Add(leftID, []string{})
+		m.mu.Unlock()
+		return
+	}
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	found = true
+	for rows.Next() {
+		var r string
+		err = rows.Scan(&r)
+		if err != nil {
+			log.Println(err)
+			rows.Close()
+			return
+		}
+		rightIDs = append(rightIDs, r)
+	}
+	rows.Close()
+	m.mu.Lock()
+	m.cache.Add(leftID, rightIDs)
+	m.mu.Unlock()
+	return
 }
 
 // Open a source database and load it into memory.
@@ -32,7 +88,7 @@ func Open(filename string) (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := sdb.Query("SELECT source_id,name,description,ident_type,url FROM sources;")
+	rows, err := sdb.Query("SELECT source_id,name,description,ident_type,url,id_url,citedata FROM sources;")
 	if err != nil {
 		return nil, err
 	}
@@ -40,27 +96,27 @@ func Open(filename string) (*Database, error) {
 	srcs := make(map[string]*Source)
 	for rows.Next() {
 		s := &Source{}
-		err = rows.Scan(&s.ID, &s.Name, &s.Description, &s.IdentifierType, &s.URL)
+		err = rows.Scan(&s.ID, &s.Name, &s.Description, &s.IdentifierType, &s.URL, &s.LinkoutURL, &s.Citation)
 		if err != nil {
 			rows.Close()
 			return nil, err
 		}
 		srcs[s.Name] = s
-		log.Println(s.Name, s)
 	}
 	rows.Close()
 
 	for _, src := range srcs {
 		src.Subsets = make(map[string]*BloomFilter)
 
-		rows, err := sdb.Query("SELECT subset, bloom FROM source_indexes WHERE source_id=?;", src.ID)
+		rows, err := sdb.Query("SELECT subset, last_update, bloom FROM source_indexes WHERE source_id=?;", src.ID)
 		if err != nil {
 			return nil, err
 		}
 		for rows.Next() {
 			ss := ""
 			var bfdata []byte
-			err = rows.Scan(&ss, &bfdata)
+			var tm time.Time
+			err = rows.Scan(&ss, &tm, &bfdata)
 			if err != nil {
 				rows.Close()
 				return nil, err
@@ -72,21 +128,22 @@ func Open(filename string) (*Database, error) {
 				return nil, err
 			}
 			src.Subsets[ss] = bf
+			src.LastUpdate = tm
 		}
 		rows.Close()
 	}
 
-	rows, err = sdb.Query(`SELECT a.name, b.name, c.mapfilename
+	rows, err = sdb.Query(`SELECT a.name, b.name, c.map_query_lr, c.map_query_rl
 		FROM sources a, sources b, source_mappings c
-		WHERE a.source_id=c.left_id AND b.source_id=c.right_id;`)
+		WHERE a.source_id=c.left_source_id AND b.source_id=c.right_source_id;`)
 	if err != nil {
 		return nil, err
 	}
 
 	maps := make(map[string]map[string]string)
 	for rows.Next() {
-		var left, right, pathname string
-		err = rows.Scan(&left, &right, &pathname)
+		var left, right, q1, q2 string
+		err = rows.Scan(&left, &right, &q1, &q2)
 		if err != nil {
 			rows.Close()
 			return nil, err
@@ -94,8 +151,11 @@ func Open(filename string) (*Database, error) {
 		if _, ok := maps[left]; !ok {
 			maps[left] = make(map[string]string)
 		}
-		maps[left][right] = pathname
-		log.Println(left, right, pathname)
+		if _, ok := maps[right]; !ok {
+			maps[right] = make(map[string]string)
+		}
+		maps[left][right] = q1
+		maps[right][left] = q2
 	}
 	rows.Close()
 
@@ -103,6 +163,7 @@ func Open(filename string) (*Database, error) {
 		db:       sdb,
 		Sources:  srcs,
 		mappings: maps,
+		mappers:  make(map[string]*dbMapper),
 	}
 	return db, err
 }
@@ -132,61 +193,39 @@ type SourceHit struct {
 // Mappings returns a list of sources that the named Source can be mapped to.
 func (x *Database) Mappings(sourceName string) []string {
 	var res []string
-	for left, m := range x.mappings {
-		for right := range m {
-			if left == sourceName {
-				res = append(res, right)
-			}
-			if right == sourceName {
-				res = append(res, left)
-			}
-		}
+	for right := range x.mappings[sourceName] {
+		res = append(res, right)
 	}
 	return res
 }
 
-// GetMapping returns a map from the given source IDs to another source IDs.
-// It currently only supports 1-1 mappings.
-// TODO: implement 1-M mappings
-func (x *Database) GetMapping(fromID, toID string) (map[string]string, error) {
-	retCol := -1
-	fn := ""
-
-	for left, m := range x.mappings {
-		for right, mapfile := range m {
-			if left == fromID && right == toID {
-				fn = mapfile
-				retCol = 1
-				break
-			}
-			if left == toID && right == fromID {
-				fn = mapfile
-				retCol = 0
-				break
-			}
-		}
-		if retCol != -1 {
-			break
-		}
+// GetMapper returns a mapper from the given source IDs to another source IDs.
+func (x *Database) GetMapper(fromID, toID string) (Mapper, error) {
+	f1, ok := x.mappings[fromID]
+	if !ok {
+		return nil, errors.New("databio/sources: no supported mapping")
 	}
-
-	if fn == "" {
+	q, ok := f1[toID]
+	if !ok {
 		return nil, errors.New("databio/sources: no supported mapping")
 	}
 
-	res := make(map[string]string, 75000)
-	f, err := databio.OpenSourceMap(fn)
+	m, ok := x.mappers[q]
+	if ok {
+		return m, nil
+	}
+
+	stmt, err := x.db.Prepare(q)
 	if err != nil {
 		return nil, err
 	}
-	s := bufio.NewScanner(f)
-	s.Scan() // skip header
-	for s.Scan() {
-		row := strings.Split(s.Text(), "\t")
-		res[row[1-retCol]] = row[retCol]
+	m = &dbMapper{
+		stmt:  stmt,
+		mu:    sync.RWMutex{},
+		cache: NewCache(defaultCacheSize),
 	}
-	f.Close()
-	return res, nil
+	x.mappers[q] = m
+	return m, nil
 }
 
 // DetermineSource examines the sample data given and tries to guess which
@@ -238,6 +277,54 @@ type Source struct {
 	Description    string
 	IdentifierType string
 	URL            string
+	LinkoutURL     string
+	Citation       string
 
-	Subsets map[string]*BloomFilter
+	Subsets    map[string]*BloomFilter
+	LastUpdate time.Time
+}
+
+// Linkout directly to an identifier if supported.
+func (s *Source) Linkout(toID string) string {
+	if s.LinkoutURL != "" {
+		if strings.Contains(s.LinkoutURL, "%s") {
+			return fmt.Sprintf(s.LinkoutURL, toID)
+		}
+		return s.LinkoutURL
+	}
+	return s.URL
+}
+
+// Cite extracts and formats a simple citation using the refman-format data.
+func (s *Source) Cite() string {
+	lines := strings.Split(s.Citation, "\r\n")
+	d := make(map[string][]string)
+	for _, line := range lines {
+		p := strings.SplitN(line, "  - ", 2)
+		if len(p) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(p[0])
+		val := strings.TrimSpace(p[1])
+		d[key] = append(d[key], val)
+	}
+
+	author := ""
+	title := ""
+	journal := ""
+	year := ""
+	if v, ok := d["AU"]; ok {
+		author = strings.SplitN(v[0], ",", 2)[0]
+	}
+	if v, ok := d["TI"]; ok {
+		title = v[0]
+	}
+	if v, ok := d["T2"]; ok {
+		journal = v[0]
+	}
+	if v, ok := d["PY"]; ok {
+		year = v[0]
+	}
+
+	return fmt.Sprintf(`%s et al. "%s" %s (%s).`, author, title, journal, year)
 }
