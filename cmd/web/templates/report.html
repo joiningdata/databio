@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/spectre.css/0.5.8/spectre.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/spectre.css/0.5.8/spectre-exp.min.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/spectre.css/0.5.8/spectre-icons.min.css">
@@ -11,7 +12,18 @@
   form {display:none;}
   .src-stats, .src-examples, .dest-examples {display:none;font-size:12px;}
   #pick-fields .btn {margin:4px;}
-  h3 {margin-top:64px;}
+  h3 { margin-top: 64px; }
+  footer {
+    margin-top:100px;
+    margin-bottom:20px;
+    font-size: 12px;
+    color: #999;
+    margin-left: -.4rem;
+    margin-right: -.4rem;
+    padding: .5rem;
+    text-align: justify;
+  }
+  footer a, footer a:visited {color:#555;}
   </style>
 </head>
 
@@ -47,17 +59,41 @@
       {{end}}
     </div>
 
+    <hr style="border:0; border-top: 2px solid #eee;margin:40px;"/>
 
   {{range $colname,$coltype := .Types}}
   <form id="form-{{b64 $colname}}" class="form" action="/translate" method="get">
 
       <input type="hidden" name="doc" value="{{$.InputFilename}}" />
       <input type="hidden" name="field" value="{{b64 $colname}}" />
+      {{$ds := index $.DetectedSources $colname}}
 
-      <table class="table table-border"><tr><td valign="top">
-        <label for="from-{{b64 $colname}}">Source Identifers</label>
-          {{$ds := index $.DetectedSources $colname}}
-
+      <table class="table table-border" style="table-layout: fixed;">
+          <tr><td valign="bottom">
+              <label for="from-{{b64 $colname}}">Source Identifers</label>
+              </td><td>From:<br/>
+              <select id="from-{{b64 $colname}}" name="from">
+                {{range $srcID, $stats := $ds}}
+                {{$src := index $.Sources $srcID}}
+                <option value="{{$srcID}}">{{$src.Description}}</option>
+                {{end}}
+              </select></td>
+              <td valign="top">To:<br/>
+              <select id="to-{{b64 $colname}}" name="to">
+                {{range $srcID, $stats := $ds}}
+                {{$src := index $.Sources $srcID}}
+                <optgroup label="from {{$src.Description}}">
+                  {{$m := index $.Maps $srcID}}
+                  {{range $m}}
+                  {{$src2 := index $.Sources .}}
+                  <option value="{{.}}">{{$src2.Description}}</option>
+                  {{end}}
+                </optgroup>
+                {{end}}
+              </select></td>
+          </tr>
+        
+        <tr><td valign="top" style="border:none;">
           {{range $srcID, $stats := $ds}}
           <div class="src-stats" id="stats-{{b64 $colname}}-{{$srcID}}">
             <b>{{$stats.Hits}}/{{$stats.Tested}} ({{pct $stats.SampleRatio}})</b>
@@ -79,38 +115,17 @@
           </div>
           {{end}}
         </td>
-        <td valign="top" rowspan="2">From:
-          <select id="from-{{b64 $colname}}" name="from">
-            {{range $srcID, $stats := $ds}}
-            {{$src := index $.Sources $srcID}}
-            <option value="{{$srcID}}">{{$src.Description}}</option>
-            {{end}}
-          </select>
+        <td valign="top" rowspan="2">
           {{range $srcID, $stats := $ds}}
             {{$src := index $.Sources $srcID}}
-            <span class="src-examples" id="example-{{b64 $colname}}-{{$srcID}}">
-            <pre>{{joinLinkout $src $stats.Examples}}</pre>
-            </span>
+            <pre class="src-examples" id="example-{{b64 $colname}}-{{$srcID}}"
+             style="overflow:scroll;">{{joinLinkout $src $stats.Examples}}</pre>
           {{end}}
         </td><td valign="top" rowspan="2">
-        <label>To:
-          {{$ds := index $.DetectedSources $colname}}
-          <select id="to-{{b64 $colname}}" name="to">
-            {{range $srcID, $stats := $ds}}
-            {{$src := index $.Sources $srcID}}
-            <optgroup label="from {{$src.Description}}">
-              {{$m := index $.Maps $srcID}}
-              {{range $m}}
-              {{$src2 := index $.Sources .}}
-              <option value="{{.}}">{{$src2.Description}}</option>
-              {{end}}
-            </optgroup>
-            {{end}}
-          </select>
-        </label><br/>
-         <pre class="dest-examples" id="example-{{b64 $colname}}-dest">... </pre></td></tr>
+         <pre style="overflow:scroll;" class="dest-examples" id="example-{{b64 $colname}}-dest">... </pre>
+        </td></tr>
          <tr><td valign="bottom">
-            <input class="btn btn-primary btn-block" type="submit" value="Translate Field Now" />
+            <button id="go-btn-{{b64 $colname}}" style="height:4em;" class="btn btn-primary btn-block" type="submit">Translate Field Now</button>
          </td></tr>
       </table>
   </form>
@@ -120,7 +135,6 @@
     var detResults = {{.}};
     var currentColumn="";
     function toggleColumn(col, b64colname) {
-      console.log(col);
       $("#toggle-"+currentColumn).toggleClass("btn-primary btn-secondary")
       $("#toggle-"+b64colname).toggleClass("btn-primary btn-secondary")
       $("form").hide();
@@ -155,6 +169,8 @@
     };
 
     function updateSelects(b64colname, srcID) {
+      var col = window.atob(b64colname);
+      console.log(col);
       var cssrcID = srcID.replace(/\./g, "\\.");
 
       var e1=$("#stats-"+b64colname+"-"+cssrcID).show();
@@ -173,6 +189,8 @@
         if( srcID=="" ) return;
         $.post("/quickmap", {"from": srcID, "to": $(e.currentTarget).val(), "ids": e2.text()}, function(data){
           $("#example-"+b64colname+"-dest").html(data).removeClass("loading");
+          $("#go-btn-"+b64colname).html("Translate to<br/>\n"+detResults["sources"][$(e.currentTarget).val()]["Description"])
+          console.log($("#go-btn").html());
         })
       });
 
@@ -181,6 +199,7 @@
       if( srcID=="" ) return;
       $.post("/quickmap", { "from": srcID, "to": el.val(), "ids": e2.text() }, function (data) {
         $("#example-" + b64colname + "-dest").html(data).removeClass("loading");
+        $("#go-btn-"+b64colname).html("Translate to<br/>\n"+detResults["sources"][el.val()]["Description"])
       });
     };
 
@@ -206,6 +225,12 @@
       });
     });
   </script>
-</body>
 
+  <footer>
+    A project from the <a href="http://joiningdata.com">Joining Data Lab</a> in the
+    <a href="https://bioinformatics.uncc.edu/">Department of Bioinformatics and Genomics</a>
+    at the <a href="https://uncc.edu">University of North Carolina at Charlotte</a>.
+
+    <a href="mailto:jeremy.jay@uncc.edu">Contact Dr. Jeremy Jay</a> with any comments, questions, or collaborations!
+  </footer>
 </html>
