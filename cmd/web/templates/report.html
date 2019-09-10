@@ -45,41 +45,41 @@
     <h3>Select a Field to remap</h3>
 
     <div id="pick-fields">
-      {{range $colname,$coltype := .Types}}
+      {{range .Fields}}
       <button class="btn btn-secondary
-      {{$ds := index $.DetectedSources $colname}}
+      {{$ds := index $.DetectedSources .Header}}
       {{if eq (len $ds) 0}}disabled{{else}}
       len{{len $ds}}
       {{range $srcID, $stats := $ds}}
       {{if gt $stats.SampleRatio 0.90}}badge{{end}}
       {{end}}{{end}}
-      " id="toggle-{{b64 $colname}}"
-        onclick="toggleColumn('{{$colname}}', '{{b64 $colname}}');return false;">
-        {{$colname}}</button>
+      " id="toggle-{{b64 .Header}}"
+        onclick="toggleColumn('{{.Header}}', '{{b64 .Header}}');return false;">
+        {{.Header}}</button>
       {{end}}
     </div>
 
     <hr style="border:0; border-top: 2px solid #eee;margin:40px;"/>
 
-  {{range $colname,$coltype := .Types}}
-  <form id="form-{{b64 $colname}}" class="form" action="/translate" method="get">
+  {{range $f := .Fields}}
+  <form id="form-{{b64 .Header}}" class="form" action="/translate" method="get">
 
       <input type="hidden" name="doc" value="{{$.InputFilename}}" />
-      <input type="hidden" name="field" value="{{b64 $colname}}" />
-      {{$ds := index $.DetectedSources $colname}}
+      <input type="hidden" name="field" value="{{b64 .Header}}" />
+      {{$ds := index $.DetectedSources .Header}}
 
       <table class="table table-border" style="table-layout: fixed;">
           <tr><td valign="bottom">
-              <label for="from-{{b64 $colname}}">Source Identifers</label>
+              <label for="from-{{b64 .Header}}">Source Identifers</label>
               </td><td>From:<br/>
-              <select id="from-{{b64 $colname}}" name="from">
+              <select id="from-{{b64 .Header}}" name="from">
                 {{range $srcID, $stats := $ds}}
                 {{$src := index $.Sources $srcID}}
                 <option value="{{$srcID}}">{{$src.Description}}</option>
                 {{end}}
               </select></td>
               <td valign="top">To:<br/>
-              <select id="to-{{b64 $colname}}" name="to">
+              <select id="to-{{b64 .Header}}" name="to">
                 {{range $srcID, $stats := $ds}}
                 {{$src := index $.Sources $srcID}}
                 <optgroup label="from {{$src.Description}}">
@@ -95,7 +95,7 @@
         
         <tr><td valign="top" style="border:none;">
           {{range $srcID, $stats := $ds}}
-          <div class="src-stats" id="stats-{{b64 $colname}}-{{$srcID}}">
+          <div class="src-stats" id="stats-{{b64 $f.Header}}-{{$srcID}}">
             <b>{{$stats.Hits}}/{{$stats.Tested}} ({{pct $stats.SampleRatio}})</b>
                 of sample data matched.<br/>
             
@@ -118,14 +118,14 @@
         <td valign="top" rowspan="2">
           {{range $srcID, $stats := $ds}}
             {{$src := index $.Sources $srcID}}
-            <pre class="src-examples" id="example-{{b64 $colname}}-{{$srcID}}"
+            <pre class="src-examples" id="example-{{b64 $f.Header}}-{{$srcID}}"
              style="overflow:scroll;">{{joinLinkout $src $stats.Examples}}</pre>
           {{end}}
         </td><td valign="top" rowspan="2">
-         <pre style="overflow:scroll;" class="dest-examples" id="example-{{b64 $colname}}-dest">... </pre>
+         <pre style="overflow:scroll;" class="dest-examples" id="example-{{b64 $f.Header}}-dest">... </pre>
         </td></tr>
          <tr><td valign="bottom">
-            <button id="go-btn-{{b64 $colname}}" style="height:4em;" class="btn btn-primary btn-block" type="submit">Translate Field Now</button>
+            <button id="go-btn-{{b64 $f.Header}}" style="height:4em;" class="btn btn-primary btn-block" type="submit">Translate Field Now</button>
          </td></tr>
       </table>
   </form>

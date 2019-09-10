@@ -9,16 +9,19 @@ import (
 func (d *Detector) identify(coltype string, data []string) map[string]*sources.SourceHit {
 	srchits := d.src.DetermineSource(data)
 	res := make(map[string]*sources.SourceHit)
-	//threshold := 0.0
-	for _, sh := range srchits {
-		/*
-			if i == 0 {
-				threshold = sh.SubsetRatio / 2.0
-			} else {
-				if sh.SubsetRatio < threshold {
-					break
-				}
-			}*/
+	threshold := 0.0
+	for i, sh := range srchits {
+		if i == 0 {
+			threshold = sh.SubsetRatio / 2.0
+		} else {
+			if sh.SubsetRatio < threshold {
+				break
+			}
+		}
+		if sh.SampleRatio < 0.05 {
+			continue
+		}
+
 		if sh.SampleRatio > sh.ExpectedError {
 			if old, found := res[sh.SourceName]; !found || old.SampleRatio < sh.SampleRatio {
 				res[sh.SourceName] = sh

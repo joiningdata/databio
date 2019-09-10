@@ -35,6 +35,18 @@ func NewDetector(s *sources.Database) *Detector {
 	return d
 }
 
+// FieldInfo describes a Field in a Record.
+type FieldInfo struct {
+	// Header or name of the Field if present
+	Header string
+
+	// Type of the Field (floats, integers, prefixed integers, text, etc)
+	Type string
+
+	// Order of the field in the record.
+	Order int
+}
+
 // Result encodes the results of a detection task on a data file.
 type Result struct {
 	// InputFilename is the source filename (relative to upload directory).
@@ -44,8 +56,8 @@ type Result struct {
 	// data Sources, percentage hit ratio, and other stats.
 	DetectedSources map[string]map[string]*sources.SourceHit `json:"detected"`
 
-	// Types reports the detected data types of each field.
-	Types map[string]string `json:"types"`
+	// Fields reports the detected data types of each field.
+	Fields []*FieldInfo `json:"fields"`
 
 	// Maps reports the possible direct translation destinations for each
 	// data source that was possibly detected in the input.
@@ -120,6 +132,17 @@ func (d *Detector) runOne(req request) {
 	samples := make(map[string][]string)
 	n := 0
 	rec, err := r.Next()
+	var coltypes []*FieldInfo
+	if err == nil {
+		coltypes = make([]*FieldInfo, len(rec.Fields()))
+		for i, colname := range rec.Fields() {
+			coltypes[i] = &FieldInfo{
+				Header: colname,
+				Type:   "text",
+				Order:  i,
+			}
+		}
+	}
 	for err == nil {
 		n++
 		if n > maxSamples {
@@ -144,9 +167,9 @@ func (d *Detector) runOne(req request) {
 	}
 
 	///// determine if each column is numeric or text
-	coltypes := make(map[string]string)
 	pfxint := regexp.MustCompile("^[A-Za-z]*:[0-9]*$")
-	for colname, sample := range samples {
+	for _, colinfo := range coltypes {
+		sample := samples[colinfo.Header]
 		nIntegers := 0
 		nFloats := 0
 		nPrefixedIntegers := 0
@@ -171,13 +194,11 @@ func (d *Detector) runOne(req request) {
 		}
 
 		if nFloats > nIntegers && nFloats > nPrefixedIntegers {
-			coltypes[colname] = "floats"
+			colinfo.Type = "floats"
 		} else if nIntegers > nPrefixedIntegers {
-			coltypes[colname] = "integers"
+			colinfo.Type = "integers"
 		} else if nPrefixedIntegers >= len(sample)/2 {
-			coltypes[colname] = "prefixed integers"
-		} else {
-			coltypes[colname] = "text"
+			colinfo.Type = "prefixed integers"
 		}
 	}
 
@@ -185,10 +206,10 @@ func (d *Detector) runOne(req request) {
 	// try to classify each column's source
 	colsrcs := make(map[string]map[string]*sources.SourceHit)
 	sourcemaps := make(map[string][]string)
-	for colname, ctype := range coltypes {
-		sample := samples[colname]
-		sourceHits := d.identify(ctype, sample)
-		colsrcs[colname] = sourceHits
+	for _, colinfo := range coltypes {
+		sample := samples[colinfo.Header]
+		sourceHits := d.identify(colinfo.Type, sample)
+		colsrcs[colinfo.Header] = sourceHits
 
 		for s := range sourceHits {
 			if _, ok := sourcemaps[s]; ok {
@@ -200,7 +221,7 @@ func (d *Detector) runOne(req request) {
 
 	res.DetectedSources = colsrcs
 	res.Maps = sourcemaps
-	res.Types = coltypes
+	res.Fields = coltypes
 
 	databio.PutResult(req.resultToken, "detection", res)
 }
