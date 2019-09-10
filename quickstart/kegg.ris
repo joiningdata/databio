@@ -1,0 +1,30 @@
+TY  - JOUR
+TI  - KEGG: kyoto encyclopedia of genes and genomes
+AU  - Kanehisa, M.
+AU  - Goto, S.
+T2  - Nucleic Acids Research
+AB  - KEGG (Kyoto Encyclopedia of Genes and Genomes) is a knowledge base for systematic analysis of gene functions, linking genomic information with higher order functional information. The genomic information is stored in the GENES database, which is a collection of gene catalogs for all the completely sequenced genomes and some partial genomes with up-to-date annotation of gene functions. The higher order functional information is stored in the PATHWAY database, which contains graphical representations of cellular processes, such as metabolism, membrane transport, signal transduction and cell cycle. The PATHWAY database is supplemented by a set of ortholog group tables for the information about conserved subpathways (pathway motifs), which are often encoded by positionally coupled genes on the chromosome and which are especially useful in predicting gene functions. A third database in KEGG is LIGAND for the information about chemical compounds, enzyme molecules and enzymatic reactions. KEGG provides Java graphics tools for browsing genome maps, comparing two genome maps and manipulating expression maps, as well as computational tools for sequence comparison, graph comparison and path computation. The KEGG databases are daily updated and made freely available (http://www. genome.ad.jp/kegg/).
+DA  - 2000/01/01/
+PY  - 2000
+DO  - 10.1093/nar/28.1.27
+DP  - PubMed
+VL  - 28
+IS  - 1
+SP  - 27
+EP  - 30
+J2  - Nucleic Acids Res.
+LA  - eng
+SN  - 0305-1048
+ST  - KEGG
+L1  - https://academic.oup.com/nar/article-pdf/28/1/27/9895154/280027.pdf
+L2  - http://www.ncbi.nlm.nih.gov/pubmed/10592173
+KW  - Animals
+KW  - Databases, Factual
+KW  - Gene Expression
+KW  - Genome
+KW  - Humans
+KW  - Information Storage and Retrieval
+KW  - Japan
+KW  - Proteins
+ER  - 
+

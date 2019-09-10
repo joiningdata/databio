@@ -14,6 +14,7 @@ curl -LO ftp://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/All_Mammalia.gene_i
 curl -LO ftp://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Mammalia/Homo_sapiens.gene_info.gz
 curl -LO ftp://ftp.ncbi.nih.gov/gene/DATA/GENE_INFO/Plants/All_Plants.gene_info.gz
 
+rm -f gene2ensembl
 gunzip gene2ensembl.gz
 cut -f2 gene2ensembl > ncbi_genes.txt
 cut -f3 gene2ensembl > ensembl_genes.txt
