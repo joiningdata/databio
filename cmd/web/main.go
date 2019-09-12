@@ -354,5 +354,6 @@ func main() {
 	http.HandleFunc("/translate", translateHandler) // begin translation => redirect to /wait
 	http.HandleFunc("/wait", waitHandler)           // translate.html => GET to /download
 	http.HandleFunc("/download", downloadHandler)   // package ZIP file
+	log.Println("Listeding on", *addr)
 	log.Println(http.ListenAndServe(*addr, nil))
 }

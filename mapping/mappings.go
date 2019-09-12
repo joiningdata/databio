@@ -349,10 +349,12 @@ func (m *Mapper) runOne(req request) {
 
 // TODO: FIXME: actually publish something
 var databioCitations = []string{
-	`Jay et al. "Automated Data Integration tools for reproducible research" In prep. (2019).`,
+	`Reid et al. "Automated Gene Data Integration with Databio" In prep. (2019).`,
 
 	strings.Replace(`TY  - JOUR
-		TI  - Automated Data Integration tools for reproducible research.
+		TI  - Automated Gene Data Integration with Databio
+		AU  - Reid, Robert W
+		AU  - Ferrier, Jacob W
 		AU  - Jay, Jeremy J
 		T2  - In preparation
 		PY  - 2019

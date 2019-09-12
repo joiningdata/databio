@@ -90,6 +90,9 @@ func (b *BloomFilter) Learn(value string) {
 // score from 0.0-1.0.  A score of 0.0 means most likely not in the
 // set, and a score of 1.0 means most like in the set.
 func (b *BloomFilter) Detect(value string) (bool, float64) {
+	if b.size == 0 {
+		return false, 0.0
+	}
 	h0, h1 := b.hash(value)
 	hx := h0 % b.size
 	for k := uint64(0); k < b.keys; k++ {

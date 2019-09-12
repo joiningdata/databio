@@ -132,7 +132,7 @@ func loadIndex(db *sql.DB, sourceName, subsetName, filename, updated string) err
 	}
 
 	data := bf.Pack()
-	log.Printf("%d items indexed (%dkb => %dkb [%d%%])", len(items), originalSize/1024, len(data)/1024, len(data)/int(originalSize/100))
+	log.Printf("%d items indexed (%dkb => %dkb [%d%%])", len(items), originalSize/1024, len(data)/1024, (len(data)*100)/int(originalSize+1))
 	_, err = db.Exec(`INSERT INTO source_indexes (source_id,subset,last_update,bloom)
 		VALUES (?,?,?,?);`, srcid, subsetName, updated, data)
 	return err
