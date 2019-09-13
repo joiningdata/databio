@@ -38,6 +38,7 @@ func initDB(db *sql.DB) error {
 				subset varchar,
 				bloom blob,
 				last_update datetime,
+				element_count integer,
 				primary key (source_id, subset)
 			);`)
 	if err != nil {
@@ -50,6 +51,7 @@ func initDB(db *sql.DB) error {
 				map_query_lr varchar,
 				map_query_rl varchar,
 				last_update datetime,
+				element_count integer,
 				primary key (left_source_id, right_source_id)
 			);`)
 	return err
@@ -132,9 +134,13 @@ func loadIndex(db *sql.DB, sourceName, subsetName, filename, updated string) err
 	}
 
 	data := bf.Pack()
-	log.Printf("%d items indexed (%dkb => %dkb [%d%%])", len(items), originalSize/1024, len(data)/1024, len(data)/int(originalSize/100))
-	_, err = db.Exec(`INSERT INTO source_indexes (source_id,subset,last_update,bloom)
-		VALUES (?,?,?,?);`, srcid, subsetName, updated, data)
+	log.Printf("%s[%s] :: %s = %d items indexed (%dkb => %dkb [%d%%])", sourceName, subsetName, filename,
+		len(items), originalSize/1024, len(data)/1024, (len(data)*100)/int(originalSize+1))
+	_, err = db.Exec(`INSERT INTO source_indexes (source_id,subset,last_update,element_count,bloom)
+		VALUES (?,?,?,?,?);`, srcid, subsetName, updated, len(items), data)
+	if err != nil {
+		log.Println(subsetName)
+	}
 	return err
 }
 
@@ -161,12 +167,13 @@ func createMapping(db *sql.DB, leftSourceName, rightSourceName, filename, update
 	q1 := fmt.Sprintf("SELECT right_id FROM mapping_%d_to_%d WHERE left_id=?;", leftID, rightID)
 	q2 := fmt.Sprintf("SELECT left_id FROM mapping_%d_to_%d WHERE right_id=?;", leftID, rightID)
 	_, err = tx.Exec(`INSERT INTO source_mappings (left_source_id,right_source_id,mapfilename,last_update,
-		map_query_lr,map_query_rl) VALUES (?,?,?,?,?,?);`, leftID, rightID, fullpath, updated, q1, q2)
+		map_query_lr,map_query_rl) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING;`,
+		leftID, rightID, fullpath, updated, q1, q2)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
-	_, err = tx.Exec(fmt.Sprintf(`CREATE TABLE mapping_%d_to_%d (
+	_, err = tx.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS mapping_%d_to_%d (
 			left_id varchar,
 			right_id varchar,
 			primary key(left_id,right_id)
@@ -207,9 +214,11 @@ func createMapping(db *sql.DB, leftSourceName, rightSourceName, filename, update
 		n++
 	}
 	f.Close()
-	log.Printf("Added %d mapping pairs to the database", n)
+	log.Printf("%s<>%s :: %s = %d pairs mapped", leftSourceName, rightSourceName, filename, n)
+	_, err = tx.Exec(fmt.Sprintf(`UPDATE source_mappings SET element_count=(SELECT COUNT(*) FROM mapping_%d_to_%d)
+		WHERE left_source_id=%d AND right_source_id=%d;`, rightID, leftID, leftID, rightID))
 
-	_, err = tx.Exec(fmt.Sprintf(`CREATE INDEX mapping_%d_to_%d_idx ON mapping_%d_to_%d (right_id,left_id);`,
+	_, err = tx.Exec(fmt.Sprintf(`CREATE INDEX IF NOT EXISTS mapping_%d_to_%d_idx ON mapping_%d_to_%d (right_id,left_id);`,
 		rightID, leftID, leftID, rightID))
 	if err != nil {
 		tx.Rollback()
@@ -220,11 +229,24 @@ func createMapping(db *sql.DB, leftSourceName, rightSourceName, filename, update
 }
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	dbfile := flag.String("db", "sources.sqlite", "sqlite database `filename` for source identifers")
+	envSourceDB, ok := os.LookupEnv("DATABIO_DB")
+	if !ok {
+		envSourceDB = "sources.sqlite"
+	}
+	logfilename, ok := os.LookupEnv("DATABIO_LOGS")
+	if ok {
+		f, err := os.Create(logfilename)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.SetOutput(f)
+		defer f.Close()
+	}
+	log.SetFlags(log.LstdFlags)
+	dbfile := flag.String("db", envSourceDB, "sqlite database `filename` for source identifers")
 	coltype := flag.String("t", "text", "`type` of the identifers (integers, floats, prefixed integers, text)")
 	upDate := flag.String("d", "", "`datetime` for the fetch of the updated data")
-	subsetname := flag.String("s", "", "`name` of the subset when indexing")
+	subsetname := flag.String("s", "", "`name` of the subset when indexing (blank=all)")
 	flag.Parse()
 
 	db, err := sql.Open("sqlite3", *dbfile)
@@ -258,7 +280,7 @@ func main() {
 		err = createMapping(db, flag.Arg(1), flag.Arg(2), flag.Arg(3), *upDate)
 
 	default:
-		log.Fatal("supported commands: init, new, index, map")
+		log.Fatal("supported commands: init, new, urls, refs, index, map")
 	}
 	if err != nil {
 		log.Fatal(err)
