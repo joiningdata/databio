@@ -49,6 +49,9 @@ type FieldInfo struct {
 
 // Result encodes the results of a detection task on a data file.
 type Result struct {
+	// Token for retrieving result metadata.
+	Token string `json:"token"`
+
 	// InputFilename is the source filename (relative to upload directory).
 	InputFilename string `json:"input_file"`
 
@@ -97,6 +100,7 @@ func (d *Detector) Status(token string) (res *Result, done bool) {
 		log.Println(err)
 		return nil, true
 	}
+	res.Token = token
 	return res, true
 }
 

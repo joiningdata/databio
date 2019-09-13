@@ -4,6 +4,7 @@ package main
 
 import (
 	"archive/zip"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -66,10 +67,12 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// sanitize the filename and extension
+	rando := make([]byte, 32)
+	rand.Read(rando)
 	fname := filepath.Base(fhs[0].Filename)
 	fext := strings.ToLower(filepath.Ext(fname))
 	fext = regexp.MustCompile("[^a-z0-9]*").ReplaceAllString(fext, "")
-	fname = fmt.Sprintf("%x", sha256.Sum256([]byte(fname)))
+	fname = fmt.Sprintf("%x", sha256.Sum256(append([]byte(fname), rando...)))
 	if fext != "" {
 		fname += "." + fext
 	}
