@@ -347,18 +347,21 @@ func (m *Mapper) runOne(req request) {
 	databio.PutResult(req.resultToken, "mapping", res)
 }
 
-// TODO: FIXME: actually publish something
+// FIXME: publish and swap out the preprint
 var databioCitations = []string{
-	`Reid et al. "Automated Gene Data Integration with Databio" In prep. (2019).`,
+	`Reid et al. "Automated Gene Data Integration with Databio" bioRxiv. (2019).`,
 
 	strings.Replace(`TY  - JOUR
-		TI  - Automated Gene Data Integration with Databio
+		T1  - Automated Gene Data Integration with Databio
+		JF  - bioRxiv
+		DO  - 10.1101/768077
+		SP  - 768077
 		AU  - Reid, Robert W
 		AU  - Ferrier, Jacob W
 		AU  - Jay, Jeremy J
-		T2  - In preparation
-		PY  - 2019
-		J2  - In prep
+		Y1  - 2019/09/18
+		UR  - http://biorxiv.org/content/early/2019/09/18/768077.abstract
+		N2  - Databio is capable of providing fast and accurate annotation of gene-oriented data sets, coupled with an integrated identifier conversion service to empower downstream data mining and computational analysis. Databio is enabled by fast real-time data structures applied to over 137 million unique identifiers, and uses automated heuristics to permit accurate data provenance without highly specialized knowledge and bioinformatics training.
 		ER  - 
 		`, "\n\t\t", "\r\n", -1),
 }
