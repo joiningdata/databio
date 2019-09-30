@@ -164,6 +164,10 @@ func (b *BloomFilter) Unpack(rawbytes []byte) error {
 
 ///////////////////////////////////////////////////////
 
+func (b *BloomFilter) ShortString() string {
+	return fmt.Sprintf("bloom(m=%d, k=%d, n=%d)", b.size, b.keys, b.nadded)
+}
+
 func (b *BloomFilter) String() string {
 	res := fmt.Sprintf("bloom(m=%d, k=%d, n=%d)\n", b.size, b.keys, b.nadded)
 	res += fmt.Sprintf("estimated error rate  : %3.3f%%\n", b.EstimatedErrorRate()*100.0)

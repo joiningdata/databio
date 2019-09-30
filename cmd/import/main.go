@@ -144,6 +144,31 @@ func loadIndex(db *sql.DB, sourceName, subsetName, filename, updated string) err
 	return err
 }
 
+func showStats(db *sql.DB) error {
+	rows, err := db.Query("SELECT s.name,i.subset,i.bloom FROM sources s, source_indexes i WHERE s.source_id=i.source_id;")
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		sourceName, subsetName := "", ""
+		var rawbytes []byte
+		err = rows.Scan(&sourceName, &subsetName, &rawbytes)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+
+		bf := &sources.BloomFilter{}
+		err = bf.Unpack(rawbytes)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		fmt.Println(sourceName, subsetName, bf.ShortString())
+	}
+	return rows.Close()
+}
+
 func createMapping(db *sql.DB, leftSourceName, rightSourceName, filename, updated string) error {
 	leftID, err := getOrCreateSource(db, leftSourceName)
 	if err != nil {
@@ -278,6 +303,9 @@ func main() {
 
 	case "map": // reverse.dotted.left.source.identifier reverse.dotted.right.source.identifier mapping_filename.tsv
 		err = createMapping(db, flag.Arg(1), flag.Arg(2), flag.Arg(3), *upDate)
+
+	case "stats":
+		err = showStats(db)
 
 	default:
 		log.Fatal("supported commands: init, new, urls, refs, index, map")
