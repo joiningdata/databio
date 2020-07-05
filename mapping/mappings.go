@@ -349,19 +349,38 @@ func (m *Mapper) runOne(req request) {
 
 // FIXME: publish and swap out the preprint
 var databioCitations = []string{
-	`Reid et al. "Automated Gene Data Integration with Databio" bioRxiv. (2019).`,
+	`Reid et al. "Automated Gene Data Integration with Databio" BMC Res Notes. (2020).`,
 
 	strings.Replace(`TY  - JOUR
-		T1  - Automated Gene Data Integration with Databio
-		JF  - bioRxiv
-		DO  - 10.1101/768077
-		SP  - 768077
-		AU  - Reid, Robert W
-		AU  - Ferrier, Jacob W
-		AU  - Jay, Jeremy J
-		Y1  - 2019/09/18
-		UR  - http://biorxiv.org/content/early/2019/09/18/768077.abstract
-		N2  - Databio is capable of providing fast and accurate annotation of gene-oriented data sets, coupled with an integrated identifier conversion service to empower downstream data mining and computational analysis. Databio is enabled by fast real-time data structures applied to over 137 million unique identifiers, and uses automated heuristics to permit accurate data provenance without highly specialized knowledge and bioinformatics training.
-		ER  - 
-		`, "\n\t\t", "\r\n", -1),
+	TI  - Automated gene data integration with Databio
+	AU  - Reid, Robert W.
+	AU  - Ferrier, Jacob W.
+	AU  - Jay, Jeremy J.
+	T2  - BMC research notes
+	AB  - OBJECTIVE: Although sequencing and other high-throughput data production technologies are increasingly affordable, data analysis and interpretation remains a significant factor in the cost of -omics studies. Despite the broad acceptance of findable, accessible, interoperable, and reusable (FAIR) data principles which focus on data discoverability and annotation, data integration remains a significant bottleneck in linking prior work in order to better understand novel research. Relevant and timely information discovery is difficult for increasingly multi-disciplinary projects when scientists cannot easily keep up with work across multiple fields. Computational tools are necessary to accurately describe data contents, and empower linkage to existing resources without prior knowledge of the various database resources.
+	RESULTS: We developed the Databio tool, accessible at https://datab.io/, to automate data parsing, identifier detection, and streamline common tasks to provide a point-and-click approach to data manipulation and integration in life sciences research and translational medicine. Databio uses fast real-time data structures and a data warehouse of 137 million identifiers, with automated heuristics to describe data provenance without highly specialized knowledge or bioinformatics training.
+	DA  - 2020/04/01/
+	PY  - 2020
+	DO  - 10.1186/s13104-020-05038-w
+	DP  - PubMed
+	VL  - 13
+	IS  - 1
+	SP  - 195
+	J2  - BMC Res Notes
+	LA  - eng
+	SN  - 1756-0500
+	L1  - https://bmcresnotes.biomedcentral.com/track/pdf/10.1186/s13104-020-05038-w
+	L2  - http://www.ncbi.nlm.nih.gov/pubmed/32238171
+	KW  - Computational Biology
+	KW  - Data integration
+	KW  - Databases, Genetic
+	KW  - Electronic Data Processing
+	KW  - Internet
+	KW  - Knowledge discovery
+	KW  - Software
+	KW  - User-Computer Interface
+	KW  - Workflow
+	KW  - Workflow automation
+	ER  - 
+	`, "\n\t\t", "\r\n", -1),
 }
