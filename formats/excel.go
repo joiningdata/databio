@@ -107,11 +107,7 @@ func (x *XLSX) skipHeaders() {
 	nr := 0
 	colcounts := make(map[int]int)
 	for x.rows.Next() {
-		cols, err := x.rows.Columns()
-		if err != nil {
-			x.stickyErr = err
-			return
-		}
+		cols := x.rows.Columns()
 		truecols := make([]string, 0, len(cols))
 		for i, c := range cols {
 			if strings.TrimSpace(c) == "" {
@@ -142,11 +138,7 @@ func (x *XLSX) skipHeaders() {
 		return
 	}
 	for x.rows.Next() {
-		cols, err := x.rows.Columns()
-		if err != nil {
-			x.stickyErr = err
-			return
-		}
+		cols := x.rows.Columns()
 		truecols := make([]string, 0, len(cols))
 		for i, c := range cols {
 			if strings.TrimSpace(c) == "" {
@@ -177,11 +169,7 @@ func (x *XLSX) Next() (Record, error) {
 		return nil, x.stickyErr
 	}
 
-	cols, err := x.rows.Columns()
-	if err != nil {
-		x.stickyErr = err
-		return nil, x.stickyErr
-	}
+	cols := x.rows.Columns()
 	if len(cols) > len(x.head) {
 		cols = cols[:len(x.head)]
 	}

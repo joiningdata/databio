@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	// only support sqlite3
-	_ "github.com/mattn/go-sqlite3"
+	// only support postgres
+	_ "github.com/lib/pq"
 )
 
 const (
@@ -83,8 +83,8 @@ func (m *dbMapper) Get(leftID string) (rightIDs []string, found bool) {
 }
 
 // Open a source database and load it into memory.
-func Open(filename string) (*Database, error) {
-	sdb, err := sql.Open("sqlite3", filename)
+func Open(connstr string) (*Database, error) {
+	sdb, err := sql.Open("postgres", connstr)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func Open(filename string) (*Database, error) {
 	for _, src := range srcs {
 		src.Subsets = make(map[string]*BloomFilter)
 
-		rows, err := sdb.Query("SELECT subset, last_update, bloom FROM source_indexes WHERE source_id=?;", src.ID)
+		rows, err := sdb.Query("SELECT subset, last_update, bloom FROM source_indexes WHERE source_id=$1;", src.ID)
 		if err != nil {
 			return nil, err
 		}

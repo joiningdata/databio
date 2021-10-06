@@ -305,7 +305,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 // http://localhost:8080/translate?field=R2VuZV9JRA&from=gov.nih.nlm.ncbi.gene&to=org.ensembl.gene
 
 func main() {
-	dbname := flag.String("db", "sources.sqlite", "database `filename` to load source datasets")
+	dbconnstring := flag.String("db", "sslmode=disable", "postgresql database `connection string` to load source datasets")
 	addr := flag.String("i", ":8080", "`address:port` to listen for web requests")
 	flag.Parse()
 
@@ -314,7 +314,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	srcDB, err = sources.Open(*dbname)
+	srcDB, err = sources.Open(*dbconnstring)
 	if err != nil {
 		log.Fatal(err)
 	}
